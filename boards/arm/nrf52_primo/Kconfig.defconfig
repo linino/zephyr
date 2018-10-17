@@ -1,0 +1,14 @@
+# Kconfig - nRF52 PRIMO board configuration
+#
+# Copyright (c) 2016 Nordic Semiconductor ASA
+# Copyright (c) 2018 WhatsNext gmbh
+# Author: Davide Ciminaghi <davide@linino.org>
+#
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_NRF52_PRIMO
+
+config BOARD
+	default "nrf52_primo"
+
+endif # BOARD_NRF52_PRIMO
