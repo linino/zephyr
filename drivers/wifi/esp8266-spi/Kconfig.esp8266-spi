@@ -1,0 +1,30 @@
+# Kconfig - esp8266-spi WiFi driver options
+
+#
+# Copyright (c) 2018 WhatsNext gmbh
+# Author: Davide Ciminaghi <davide@linino.org>
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+menuconfig WIFI_ESP8266_SPI
+	bool "ESP866 via spi WiFi driver support"
+	depends on WIFI
+	select WIFI_OFFLOAD
+	select NET_L2_WIFI_MGMT
+
+if WIFI_ESP8266_SPI
+
+config WIFI_ESP8266_SPI_NAME
+	string "Driver name"
+	default "esp8266-spi"
+
+config WIFI_ESP8266_SPI_MAX_PACKET_SIZE
+	int "Maximum size of a packet, in bytes"
+	default 1472
+	help
+	 Set the maximum size of a network packet going through the chip.
+	 This sets the size of each buffer, in each buffer pool.
+	 Do not modify it unless you know what you are doing.
+
+endif # WIFI_ESP8266_SPI
