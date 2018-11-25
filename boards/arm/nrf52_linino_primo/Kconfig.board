@@ -1,0 +1,9 @@
+# Kconfig - Linino Primo board configuration
+#
+# Copyright (c) 2018 Linino org
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config  BOARD_NRF52_LININO_PRIMO
+	bool "nRF52 LININO PRIMO"
+	depends on SOC_NRF52832_QFAA

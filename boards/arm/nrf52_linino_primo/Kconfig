@@ -1,0 +1,14 @@
+# Kconfig - Linino Primo board configuration
+#
+# Copyright (c) 2018 Linino org
+#
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_NRF52_LININO_PRIMO
+
+config BOARD_ENABLE_DCDC
+	bool "Enable DCDC mode"
+	select SOC_DCDC_NRF52X
+	default y
+
+endif # BOARD_NRF52_LININO_PRIMO

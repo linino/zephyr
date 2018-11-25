@@ -1,0 +1,12 @@
+# Kconfig - Linino Primo board configuration
+#
+# Copyright (c) 2018 Linino org
+#
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_NRF52_LININO_PRIMO
+
+config BOARD
+	default "nrf52_linino_primo"
+
+endif # BOARD_NRF52_LININO_PRIMO
