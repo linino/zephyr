@@ -118,7 +118,7 @@ Audio
 External Connectors
 -------------------
 
-STM32 Debug IN
+STM32 SWD
 
 +-------+----------------+
 | PIN # | Signal Name    |
@@ -144,7 +144,7 @@ STM32 Debug IN
 | 10    | RESET          |
 +-------+----------------+
 
-nRF52 Debug OUT
+nRF52 SWD
 
 +-------+----------------+
 | PIN # | Signal Name    |
