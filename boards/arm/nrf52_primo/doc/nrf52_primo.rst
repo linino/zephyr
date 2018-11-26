@@ -27,7 +27,7 @@ the following devices:
 * :abbr:`UART (Universal asynchronous receiver-transmitter)`
 * :abbr:`WDT (Watchdog Timer)`
 
-.. figure:: ../img/linino_primo.jpg
+.. figure:: img/linino_primo.jpg
      :width: 800px
      :align: center
      :alt: Linino Primo
