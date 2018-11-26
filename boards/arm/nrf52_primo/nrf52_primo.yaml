@@ -1,11 +1,12 @@
 identifier: nrf52_primo
-name: nRF52-PRIMO
+name: nRF52-Primo
 type: mcu
 arch: arm
 toolchain:
   - zephyr
-  - gccarmemb
+  - gnuarmemb
 ram: 64
 flash: 512
 supported:
   - adc
+  - nvs
