@@ -1,12 +1,17 @@
 .. _nrf52_primo:
 
-nRF52-PRIMO
-##############
+Linino Primo
+############
 
 Overview
 ********
 
-Support for the following devices is provided:
+The Linino Primo combines the processing power from the Nordic nRF52 processor,
+an Espressif ESP8266 for WiFi, as well as several on-board sensors and a battery charger.
+The nRF52 includes NFC (Near Field Communication) and Bluetooth Smart.
+The sensors include an on-board button, LED and infrared receiver and transmitter.
+It provides support for the Nordic Semiconductor nRF52832 ARM Cortex-M4F CPU and
+the following devices:
 
 * :abbr:`ADC (Analog to Digital Converter)`
 * CLOCK
@@ -18,211 +23,307 @@ Support for the following devices is provided:
 * :abbr:`PWM (Pulse Width Modulation)`
 * RADIO (Bluetooth Low Energy and 802.15.4)
 * :abbr:`RTC (nRF RTC System Clock)`
-* Segger RTT (RTT Console)
 * :abbr:`SPI (Serial Peripheral Interface)`
 * :abbr:`UART (Universal asynchronous receiver-transmitter)`
 * :abbr:`WDT (Watchdog Timer)`
 
-.. figure:: img/nrf52_primo.jpg
-   :width: 700px
-   :align: center
-   :alt: nRF52 PRIMO
+.. figure:: ../img/linino_primo.jpg
+     :width: 800px
+     :align: center
+     :alt: Linino Primo
 
-The nrf52_primo board features a nRF52 SOC plus two other microcontrollers:
-an STM32F103 (mostly for SWD debugging) and an ESP8266 providing wifi
-connectivity.
+     Linino Primo
 
 Hardware
 ********
 
-SPI is used for talking to the ESP8266 chip, while the I2C interface is
-connected to the STM32 together with the nRF52 SWD signals.
-AIN3 is shared with UART2's rx pin, so it cannot be used as an ADC input.
+The Linino Primo is the first board developed in cooperation with Nordic Semiconductor.
+It brings new benefits for the IoT world all on one platform: advanced 32-bit microcontroller architecture,
+bluetooth low energy (BLE), Wi-Fi, near-field communications (NFC), and infrared (IR) transmit and receive capability.
 
+There are three onboard microcontrollers:
+
+* nRF52832, the main Arduino microcontroller with integrated BLE and NFC
+* STM32f103, a service microcontroller used for advanced debugging and programming of the other microcontrollers
+* ESP8266, for Wi-Fi and related internet connectivity functions.
+
+Supported Features
+==================
+
+The Linino Primo board configuration supports the following
+hardware features:
+
++-----------+------------+----------------------+
+| Interface | Controller | Driver/Component     |
++===========+============+======================+
+| ADC       | nRF52832   | adc                  |
++-----------+------------+----------------------+
+| CLOCK     | nRF52832   | clock_control        |
++-----------+------------+----------------------+
+| FLASH     | nRF52832   | flash                |
++-----------+------------+----------------------+
+| GPIO      | nRF52832   | gpio                 |
++-----------+------------+----------------------+
+| I2C(M)    | nRF52832   | i2c                  |
++-----------+------------+----------------------+
+| MPU       | nRF52832   | arch/arm             |
++-----------+------------+----------------------+
+| NVIC      | nRF52832   | arch/arm             |
++-----------+------------+----------------------+
+| PWM       | nRF52832   | pwm                  |
++-----------+------------+----------------------+
+| RADIO     | ESP8266    | WiFi                 |
++-----------+------------+----------------------+
+| RADIO     | nRF52832   | Bluetooth            |
++-----------+------------+----------------------+
+| RTC       | nRF52832   | system clock         |
++-----------+------------+----------------------+
+| SPI(M/S)  | nRF52832   | spi                  |
++-----------+------------+----------------------+
+| UART      | nRF52832   | serial               |
++-----------+------------+----------------------+
+| WDT       | nRF52832   | watchdog             |
++-----------+------------+----------------------+
+| IR        | STM32f103  | swd                  |
++-----------+------------+----------------------+
+| CMSIS-DAP | STM32f103  | infrared             |
++-----------+------------+----------------------+
+
+Connections and IOs
+===================
 
 LED
 ---
 
-* IO13 (yellow) = P0.25
+* ON    (Orange)
+* L9    (Orange) = P0.20
+* USER2 (white)
+* WIFI  (green)
+* BLE   (blue)
+* CHG   (red)
 
 Push buttons
 ------------
 
-* USER1 = P0.07
+* USER1    = P0.07
+* USER2
+* ESP_BOOT
+* RESET
 
 Audio
-------------
+-----
 
 * Buzzer = P0.08
 
 External Connectors
 -------------------
 
-SWD
+STM32 Debug IN
 
-+-------+--------------+
-| PIN # | Signal Name  |
-+=======+==============+
-| 1     | VDD_rRF      |
-+-------+--------------+
-| 2     | nRF_SWDIO    |
-+-------+--------------+
-| 3     | GND          |
-+-------+--------------+
-| 4     | nRF_SWDCLK   |
-+-------+--------------+
-| 5     | GND          |
-+-------+--------------+
-| 6     | NC           |
-+-------+--------------+
-| 7     | NC           |
-+-------+--------------+
-| 8     | NC           |
-+-------+--------------+
-| 9     | GND_DETECT   |
-+-------+--------------+
-| 10    | 52_RST       |
-+-------+--------------+
++-------+----------------+
+| PIN # | Signal Name    |
++=======+================+
+| 1     | VCC            |
++-------+----------------+
+| 2     | SWDIO          |
++-------+----------------+
+| 3     | GND            |
++-------+----------------+
+| 4     | SWDCLK         |
++-------+----------------+
+| 5     | GND            |
++-------+----------------+
+| 6     | Cut off        |
++-------+----------------+
+| 7     | GND            |
++-------+----------------+
+| 8     | Cut off        |
++-------+----------------+
+| 9     | GND            |
++-------+----------------+
+| 10    | RESET          |
++-------+----------------+
 
-Arduino Headers
+nRF52 Debug OUT
 
-J1
++-------+----------------+
+| PIN # | Signal Name    |
++=======+================+
+| 1     | VCC            |
++-------+----------------+
+| 2     | EXT_SWDIO      |
++-------+----------------+
+| 3     | GND            |
++-------+----------------+
+| 4     | EXT_SWDCLK     |
++-------+----------------+
+| 5     | GND            |
++-------+----------------+
+| 6     | Cut off        |
++-------+----------------+
+| 7     | Cut off        |
++-------+----------------+
+| 8     | Cut off        |
++-------+----------------+
+| 9     | EXT_GND_DETECT |
++-------+----------------+
+| 10    | EXT_RESET      |
++-------+----------------+
 
-+-------+--------------+-------------+
-| PIN # | PIN Name     | nRF52 pin   |
-+=======+==============+=============+
-| 1     | SCL          | P0.27       |
-+-------+--------------+-------------+
-| 2     | SDA          | P0.26       |
-+-------+--------------+-------------+
-| 3     | AREF         | P0.02/AIN0  |
-+-------+--------------+-------------+
-| 4     | GND          |             |
-+-------+--------------+-------------+
-| 5     | 13           | P0.25       |
-+-------+--------------+-------------+
-| 6     | 12           | P0.24       |
-+-------+--------------+-------------+
-| 7     | 11           | P0.23       |
-+-------+--------------+-------------+
-| 8     | 10           | P0.22       |
-+-------+--------------+-------------+
-| 9     | 9            | P0.20       |
-+-------+--------------+-------------+
-| 10    | 8            | P0.19       |
-+-------+--------------+-------------+
+Headers
+-------
 
-J2
+Power
 
-+-------+--------------+-------------+
-| PIN # | PIN Name     | Signal name |
-+=======+==============+=============+
-| 1     | NC           |             |
-+-------+--------------+-------------+
-| 2     | IOREF        |    VDD33    |
-+-------+--------------+-------------+
-| 3     | RESET        |   RESET     |
-+-------+--------------+-------------+
-| 4     | 3.3V         |    VDD33    |
-+-------+--------------+-------------+
-| 5     | 5V           |     5V      |
-+-------+--------------+-------------+
-| 6     | GND          |    GND      |
-+-------+--------------+-------------+
-| 7     | GND          |    GND      |
-+-------+--------------+-------------+
-| 8     | VIN          |    VIN      |
-+-------+--------------+-------------+
++-------+--------------+-------------------------+
+| PIN # | Signal Name  | NRF52832 Functions      |
++=======+==============+=========================+
+| 1     | N/A          | N/A                     |
++-------+--------------+-------------------------+
+| 2     | IOREF        | N/A                     |
++-------+--------------+-------------------------+
+| 3     | RESET        | P0.21 / RESET           |
++-------+--------------+-------------------------+
+| 4     | 3.3V         | N/A                     |
++-------+--------------+-------------------------+
+| 5     | 5V           | N/A                     |
++-------+--------------+-------------------------+
+| 6     | GND          | N/A                     |
++-------+--------------+-------------------------+
+| 7     | GND          | N/A                     |
++-------+--------------+-------------------------+
+| 8     | VIN          | N/A                     |
++-------+--------------+-------------------------+
 
-J3
+Analog in
 
-+-------+--------------+-------------+
-| PIN # | PIN Name     | nRF52 pin   |
-+=======+==============+=============+
-| 1     | A0           | P0.03/AIN0  |
-+-------+--------------+-------------+
-| 2     | A1           | P0.04/AIN1  |
-+-------+--------------+-------------+
-| 3     | A2           | P0.28/AIN4  |
-+-------+--------------+-------------+
-| 4     | A3           | P0.29/AIN5  |
-+-------+--------------+-------------+
-| 5     | A4           | P0.30/AIN6  |
-+-------+--------------+-------------+
-| 6     | A5           | P0.31/AIN7  |
-+-------+--------------+-------------+
++-------+--------------+-------------------------+
+| PIN # | Signal Name  | NRF52832 Functions      |
++=======+==============+=========================+
+| 1     | A0           | P0.03 / AIN1            |
++-------+--------------+-------------------------+
+| 2     | A1           | P0.04 / AIN2            |
++-------+--------------+-------------------------+
+| 3     | A2           | P0.28 / AIN4            |
++-------+--------------+-------------------------+
+| 4     | A3           | P0.29 / AIN5            |
++-------+--------------+-------------------------+
+| 5     | A4           | P0.30 / AIN6            |
++-------+--------------+-------------------------+
+| 6     | A5           | P0.31 / AIN7            |
++-------+--------------+-------------------------+
 
-J4
+Digital I/O
 
-+-------+--------------+-------------+
-| PIN # | PIN Name     | nRF52 pin   |
-+=======+==============+=============+
-| 1     | 7            | P0.18       |
-+-------+--------------+-------------+
-| 2     | 6            | P0.17       |
-+-------+--------------+-------------+
-| 3     | 5            | P0.16       |
-+-------+--------------+-------------+
-| 4     | 4            | P0.15       |
-+-------+--------------+-------------+
-| 5     | 3            | P0.14       |
-+-------+--------------+-------------+
-| 6     | 2            | P0.13       |
-+-------+--------------+-------------+
-| 7     | 1->TX        | P0.12       |
-+-------+--------------+-------------+
-| 8     | 0<-RX        | P0.11       |
-+-------+--------------+-------------+
++-------+--------------+-------------------------+
+| PIN # | Signal Name  | NRF52832 Functions      |
++=======+==============+=========================+
+| 1     | D0 (RX)      | P0.11                   |
++-------+--------------+-------------------------+
+| 2     | D1 (TX)      | P0.12                   |
++-------+--------------+-------------------------+
+| 3     | D2           | P0.13                   |
++-------+--------------+-------------------------+
+| 4     | D3           | P0.14 / TRACEDATA[3]    |
++-------+--------------+-------------------------+
+| 5     | D4           | P0.15 / TRACEDATA[2]    |
++-------+--------------+-------------------------+
+| 6     | D5           | P0.16 / TRACEDATA[1]    |
++-------+--------------+-------------------------+
+| 7     | D6           | P0.17                   |
++-------+--------------+-------------------------+
+| 8     | D7           | P0.18 / TRACEDATA[0]  / |
+|       |              | SWO                     |
++-------+--------------+-------------------------+
 
+Digital I/O
+
++-------+--------------+-------------------------+
+| PIN # | Signal Name  | NRF52832 Functions      |
++=======+==============+=========================+
+| 1     | D8           | P0.19                   |
++-------+--------------+-------------------------+
+| 2     | D9           | P0.20 / TRACECLK        |
++-------+--------------+-------------------------+
+| 3     | D10 (SS)     | P0.22                   |
++-------+--------------+-------------------------+
+| 4     | D11 (MOSI)   | P0.23                   |
++-------+--------------+-------------------------+
+| 5     | D12 (MISO)   | P0.24                   |
++-------+--------------+-------------------------+
+| 6     | D13 (SCK)    | P0.25                   |
++-------+--------------+-------------------------+
+| 7     | GND          | N/A                     |
++-------+--------------+-------------------------+
+| 8     | AREF         | P0.02 / AIN0            |
++-------+--------------+-------------------------+
+| 9     | SDA          | P0.26                   |
++-------+--------------+-------------------------+
+| 10    | SCL          | P0.27                   |
++-------+--------------+-------------------------+
+
+ISCP
+
++-------+--------------+-------------------------+
+| PIN # | Signal Name  | NRF52832 Functions      |
++=======+==============+=========================+
+| 1     | D12 (MISO)   | P0.24                   |
++-------+--------------+-------------------------+
+| 2     | 5V           | N/A                     |
++-------+--------------+-------------------------+
+| 3     | D13 (SCK)    | P0.25                   |
++-------+--------------+-------------------------+
+| 4     | D11 (MOSI)   | P0.23                   |
++-------+--------------+-------------------------+
+| 5     | RESET        | N/A                     |
++-------+--------------+-------------------------+
+| 6     | GND          | N/A                     |
++-------+--------------+-------------------------+
 
 Programming and Debugging
 *************************
 
+Applications for the ``nrf52_primo`` board configuration can be built and
+flashed in the usual way (see :ref:`build_an_application` and
+:ref:`application_run` for more details).
+
 Flashing
---------
+========
 
-Openocd can be used for flashing.
+Here is an example for the :ref:`hello_world` application.
 
-First, connect the board to a PC via USB (J8 USB micro connector).
-Next, start openocd on the pc like this:
-
-.. code-block:: console
-
-   $ openocd -f nrf52_primo.cfg
-
-Where file nrf52_primo.cfg contains the following:
+First, run your favorite terminal program to listen for output.
 
 .. code-block:: console
 
-    # nRF52 Primo board (nRF52832)
-    source [find interface/cmsis-dap.cfg]
-    source [find target/nrf52.cfg]
+   $ minicom -D <tty_device> -b 115200
 
+Replace :code:`<tty_device>` with the port where the board Linino Primo
+can be found. For example, under Linux, :code:`/dev/ttyACM0`.
 
 Then build and flash the application in the usual way.
 
 .. zephyr-app-commands::
-
    :zephyr-app: samples/hello_world
    :board: nrf52_primo
    :goals: build flash
 
-  start gdb and load the program to flash:
+Debugging
+=========
 
-.. code-block:: console
+Debugging an application in the usual way. Here is an example for
+the :ref:`hello_world` application.
 
-   $ arm-none-eabi-gdb hello_world.elf
-   (gdb) target remote localhost:3333
-   (gdb) load
-
-   Debugging
-   =========
-
-openocd/gdb can also be used for debugging
+.. zephyr-app-commands::
+   :zephyr-app: samples/hello_world
+   :board: nrf52_primo
+   :maybe-skip-config:
+   :goals: debug
 
 
-Testing the LEDs and buttons on the nRF52 primo
-***********************************************
+
+Testing the LEDs and buttons in the Linino Primo
+************************************************
 
 There are 2 samples that allow you to test that the buttons (switches) and LEDs on
 the board are working properly with Zephyr:
@@ -233,12 +334,9 @@ the board are working properly with Zephyr:
    samples/basic/button
 
 You can build and flash the examples to make sure Zephyr is running correctly on
-your board. The button and LED definitions can be found in
-:file:`boards/arm/nrf52_primo/board.h`.
+your board. The button and LED definitions can be found in :file:`boards/arm/nrf52_primo/board.h`.
 
 References
 **********
 
 .. target-notes::
-
-FIXME: ADD STUFF HERE
