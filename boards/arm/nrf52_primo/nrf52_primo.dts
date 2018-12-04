@@ -97,6 +97,18 @@
 	mosi-pin = <24>;
 	miso-pin = <23>;
 	sck-pin = <25>;
+
+	wifi0: esp8266-primo@0 {
+		compatible = "espressif,esp8266-primo";
+		spi-max-frequency = <2000000>;
+		reg = <0>;
+		/*
+		 * nRF52_RX2 used as an output for requesting polling from
+		 * esp8266
+		 */
+		poll-request-gpios = <&gpio0 5 0>;
+		label = "ESP8266-PRIMO";
+	};
 };
 
 &flash0 {
