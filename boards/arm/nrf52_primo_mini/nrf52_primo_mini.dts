@@ -1,0 +1,149 @@
+/*
+ * Copyright (c) 2017 Shawn Nock <shawn@monadnock.ca>
+ * Copyright (c) 2017 Linaro Limited
+ * Copyright (c) 2018 dog hunter LLC and the Linino community
+ *
+ * Linino.org is a dog hunter sponsored community project
+ *
+ * This file comes from nrf52_pca10040.dts and was modified by
+ * Davide Ciminaghi <davide@linino.org> and Jeff Wu <jeff@doghunter.org>
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+#include <nordic/nrf52840_qiaa.dtsi>
+
+/ {
+	model = "Primo Mini board";
+	compatible = "doghunter,primo-mini", "nordic,nrf52840-qiaa",
+		     "nordic,nrf52840";
+
+	chosen {
+		zephyr,console = &uart0;
+#ifdef CONFIG_MCUMGR_SMP_UART
+		zephyr,uart-mcumgr = &uart0;
+#endif
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		led0: led_0 {
+			gpios = <&gpio0 8 GPIO_INT_ACTIVE_LOW>;
+			label = "BLUETOOTH LED";
+		};
+	};
+
+	/* These aliases are provided for compatibility with samples */
+	aliases {
+		led0 = &led0;
+	};
+};
+
+&adc {
+	status ="ok";
+};
+
+&gpiote {
+	status ="ok";
+};
+
+&gpio0 {
+	status ="ok";
+};
+
+&uart0 {
+	status = "ok";
+	compatible = "nordic,nrf-uart";
+	current-speed = <115200>;
+	/* nRF52_TX1 */
+	tx-pin = <7>;
+	/* nRF52_RX1 */
+	rx-pin = <6>;
+};
+
+&uart1 {
+	status = "ok";
+	compatible = "nordic,nrf-uart";
+	current-speed = <115200>;
+	/* nRF52_TX2 */
+	tx-pin = <14>;
+	/* nRF52_RX2 */
+	rx-pin = <13>;
+};
+
+&i2c0 {
+	status = "ok";
+	/* nRF52_SDA */
+	sda-pin = <26>;
+	/* nRF52_SCL */
+	scl-pin = <27>;
+};
+
+&i2c1 {
+	status = "disabled";
+};
+
+/*
+ * CS -> ESP_GPIO15 -> NSS_nRF -> P0.12
+ * MOSI -> ESP_GPIO12 -> MOSI_nRF -> P1.09
+ * MISO -> ESP_GPIO13 -> MISO_nRF -> P0.11
+ * CLK -> ESP_GPIO14 -> SCK_nRF -> P1.08
+*/
+&spi2 {
+	status = "ok";
+	csn-pin = <12>;
+	mosi-pin = <41>;
+	miso-pin = <11>;
+	sck-pin = <40>;
+
+	wifi0: esp8266-primo@0 {
+		compatible = "espressif,esp8266-primo";
+		spi-max-frequency = <2000000>;
+		reg = <0>;
+		/*
+		 * nRF52_RX2 used as an output for requesting polling from
+		 * esp8266
+		 */
+		poll-request-gpios = <&gpio0 5 0>;
+		label = "ESP8266-PRIMO";
+	};
+};
+
+
+&flash0 {
+	/*
+	 * For more information, see:
+	 * http://docs.zephyrproject.org/latest/devices/dts/flash_partitions.html
+	*/
+	partitions {
+                compatible = "fixed-partitions";
+                #address-cells = <1>;
+                #size-cells = <1>;
+
+                boot_partition: partition@0 {
+                        label = "mcuboot";
+                        reg = <0x000000000 0x0000C000>;
+                };
+                slot0_partition: partition@c000 {
+                        label = "image-0";
+                        reg = <0x0000C000 0x000069000>;
+                };
+                slot1_partition: partition@75000 {
+                        label = "image-1";
+                        reg = <0x00075000 0x000069000>;
+                };
+                scratch_partition: partition@de000 {
+                        label = "image-scratch";
+                        reg = <0x000de000 0x0001e000>;
+                };
+#if defined(CONFIG_FS_FLASH_STORAGE_PARTITION)
+		storage_partition: partition@fc000 {
+			label = "storage";
+			reg = <0x000fc000 0x00004000>;
+		};
+#endif
+	};
+};

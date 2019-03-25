@@ -1,0 +1,18 @@
+# Kconfig - nRF52 PRIMO board configuration
+#
+# Copyright (c) 2016 Nordic Semiconductor ASA
+# Copyright (c) 2018 dog hunter LLC and the Linino community
+#
+# Linino.org is a dog hunter sponsored community project
+#
+# This file comes from nrf52_pca10040's Kconfig.defconfig and was patched by
+# Davide Ciminaghi <davide@linino.org> and Jeff Wu <jeff@doghunter.org>
+#
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_NRF52_PRIMO_MINI
+
+config BOARD
+	default "nrf52_primo_mini"
+
+endif # BOARD_NRF52_PRIMO_MINI
