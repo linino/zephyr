@@ -14,17 +14,16 @@
 #include <doghunter/nrf52_primo_mini.dtsi>
 
 / {
-       model = "Primo Mini EVB board";
-       compatible = "doghunter,primo-mini-evb", "doghunter,primo-mini",
-                    "nordic,nrf52840-qiaa", "nordic,nrf52840";
+	model = "Primo Mini EVB board";
+	compatible = "doghunter,primo-mini-evb", "doghunter,primo-mini",
+		     "nordic,nrf52840-qiaa", "nordic,nrf52840";
 
-       chosen {
-               zephyr,console = &uart0;
+	chosen {
+		zephyr,console = &uart0;
 #ifdef CONFIG_MCUMGR_SMP_UART
-               zephyr,uart-mcumgr = &uart0;
+		zephyr,uart-mcumgr = &uart0;
 #endif
-               zephyr,sram = &sram0;
-               zephyr,flash = &flash0;
-       };
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+	};
 };
-
