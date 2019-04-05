@@ -1,0 +1,29 @@
+/*
+ * Copyright (c) 2017 Shawn Nock <shawn@monadnock.ca>
+ * Copyright (c) 2017 Linaro Limited
+ * Copyright (c) 2019 dog hunter LLC and the Linino community
+ *
+ * Linino.org is a dog hunter sponsored community project
+ *
+ * nrf52 primo mini evb.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+#include <doghunter/nrf52_primo_mini.dtsi>
+
+/ {
+	model = "Primo Mini EVB board";
+	compatible = "doghunter,primo-mini-evb", "doghunter,primo-mini",
+		     "nordic,nrf52840-qiaa", "nordic,nrf52840";
+
+	chosen {
+		zephyr,console = &uart0;
+#ifdef CONFIG_MCUMGR_SMP_UART
+		zephyr,uart-mcumgr = &uart0;
+#endif
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+	};
+};

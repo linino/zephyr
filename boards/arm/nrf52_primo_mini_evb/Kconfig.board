@@ -1,4 +1,4 @@
-# Kconfig - nRF52 PRIMO board configuration
+# Kconfig - nRF52 PRIMO MINI EVB board configuration
 #
 # Copyright (c) 2016 Nordic Semiconductor ASA
 # Copyright (c) 2018 dog hunter LLC and the Linino community
@@ -10,6 +10,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-config  BOARD_NRF52_PRIMO_MINI
-	bool "nRF52 Primo Mini"
+config  BOARD_NRF52_PRIMO_MINI_EVB
+	bool "nRF52 Primo Mini EVB"
 	depends on SOC_NRF52840_QIAA
