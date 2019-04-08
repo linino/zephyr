@@ -26,4 +26,12 @@
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
 	};
+
+	buttons {
+		compatible = "gpio-keys";
+		button0: button_0 {
+			gpios = <&gpio0 17 GPIO_INT_ACTIVE_LOW>;
+			label = "USER button";
+		};
+	};
 };
