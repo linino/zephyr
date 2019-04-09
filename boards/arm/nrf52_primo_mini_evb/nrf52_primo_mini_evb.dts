@@ -34,4 +34,23 @@
 			label = "USER button";
 		};
 	};
+
+	leds {
+                compatible = "gpio-leds";
+                red_led: led_0 {
+			/* PD37 -> P1.05 */
+                        gpios = <&gpio1 5 0>;
+                        label = "User LD1";
+                };
+                green_led: led_1 {
+			/* PD38 -> P1.06 */
+                        gpios = <&gpio1 6 0>;
+                        label = "User LD2";
+                };
+                blue_led: led_2 {
+			/* PD39 -> P1.07 */
+                        gpios = <&gpio1 7 0>;
+                        label = "User LD3";
+                };
+        };
 };
