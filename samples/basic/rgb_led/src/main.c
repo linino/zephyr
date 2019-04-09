@@ -30,6 +30,14 @@
 #define PWM_CH1		GREEN_PWM_LED_PWM_CHANNEL
 #define PWM_DEV2	BLUE_PWM_LED_PWM_CONTROLLER
 #define PWM_CH2		BLUE_PWM_LED_PWM_CHANNEL
+#elif defined CONFIG_BOARD_NRF52_PRIMO_MINI_EVB
+/* Device is always the same */
+#define PWM_DEV0	CONFIG_PWM_0_NAME
+#define PWM_CH0		0
+#define PWM_DEV1	CONFIG_PWM_0_NAME
+#define PWM_CH1		1
+#define PWM_DEV2	CONFIG_PWM_0_NAME
+#define PWM_CH2		2
 #else
 #error "Choose supported board or add new board for the application"
 #endif
