@@ -54,3 +54,11 @@
                 };
         };
 };
+
+&i2c1 {
+	hts221@5f {
+		compatible = "st,hts221";
+		reg = <0x5f>;
+		label = "HTS221";
+	};
+};
