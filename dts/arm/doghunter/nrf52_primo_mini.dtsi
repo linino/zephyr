@@ -58,6 +58,17 @@
 	scl-pin = <27>;
 };
 
+&pwm0 {
+	status = "ok";
+	ch0-pin = <37>;
+	ch0-inverted;
+	ch1-pin = <38>;
+	ch1-inverted;
+	ch2-pin = <39>;
+	ch2-inverted;
+};
+
+
 /*
  * CS -> ESP_GPIO15 -> NSS_nRF -> P0.12
  * MOSI -> ESP_GPIO12 -> MOSI_nRF -> P1.09
