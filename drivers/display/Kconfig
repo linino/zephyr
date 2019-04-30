@@ -13,6 +13,9 @@ menuconfig DISPLAY
 
 if DISPLAY
 
+config DISPLAY_UTIL
+       bool
+
 module = DISPLAY
 module-str = display
 source "subsys/logging/Kconfig.template.log_config"
@@ -26,6 +29,8 @@ source "drivers/display/Kconfig.sdl"
 source "drivers/display/Kconfig.ssd1306"
 
 source "drivers/display/Kconfig.ssd1673"
+
+source "drivers/display/Kconfig.ws-epaper"
 
 source "drivers/display/Kconfig.dummy"
 
