@@ -62,3 +62,28 @@
 		label = "HTS221";
 	};
 };
+
+&spi2 {
+	status = "ok";
+	/* NSS_EXT -> PD41 -> p1.15 */
+	cs-gpios = <&gpio1 15 0>;
+	mosi-pin = <44>;
+	miso-pin = <45>;
+	sck-pin = <46>;
+
+	display@0 {
+		compatible = "ws,e-paper";
+		reg = <0>;
+		label = "DISPLAY";
+		xres = <212>;
+		yres = <104>;
+		spi-max-frequency = <5000000>;
+		/* 4 -> PD9 -> p0.22 */
+		reset-gpios = <&gpio0 22 GPIO_POL_INV>;
+		/* 3 -> PD8 -> p0.21 */
+		busy-gpios = <&gpio0 21 GPIO_POL_INV>;
+		/* 2 -> PD10 -> p0.20 */
+		dc-gpios = <&gpio0 20 0>;
+	};
+
+};
