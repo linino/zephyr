@@ -1,0 +1,49 @@
+#
+# Copyright (c) 2019, dog hunter LLC and the Linino community
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+title: WAVESHARE E-PAPER Dot Matrix Display Controller
+version: 0.1
+
+description: >
+    This is a representation of the WaveShare e-paper EPD display controller
+
+inherits:
+    !include spi-device.yaml
+
+properties:
+    compatible:
+      constraint: "ws,e-paper"
+
+    yres:
+      type: int
+      category: required
+      description: vertical resolution in pixels
+      generation:  define
+
+    xres:
+      type: int
+      category: required
+      description: horizontal resolution
+      generation: define
+
+    dc-gpios:
+      type: compound
+      category: required
+      description: command/data gpio
+      generation: define, use-prop-name
+
+    reset-gpios:
+      type: compound
+      category: required
+      description: reset gpio
+      generation: define, use-prop-name
+
+    busy-gpios:
+      type: compound
+      description: busy gpio
+      generation: define, use-prop-name
+
+...
