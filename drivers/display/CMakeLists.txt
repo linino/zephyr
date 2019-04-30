@@ -14,7 +14,11 @@ zephyr_sources_ifdef(CONFIG_ILI9340_LCD_ADAFRUIT_1480
 zephyr_sources_ifdef(CONFIG_SSD1306 ssd1306.c)
 zephyr_sources_ifdef(CONFIG_SSD1673 ssd1673.c)
 
+zephyr_sources_ifdef(CONFIG_WS_EPAPER display_ws_epaper.c)
+
 zephyr_sources_ifdef(CONFIG_SDL_DISPLAY display_sdl.c)
 
 zephyr_sources_ifdef(CONFIG_DUMMY_DISPLAY display_dummy.c)
+
+zephyr_sources_ifdef(CONFIG_DISPLAY_UTIL display-util.c)
 
