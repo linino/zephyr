@@ -89,13 +89,14 @@ static u8_t draw_char_vtmono(const struct char_framebuffer *fb,
 		u32_t y_segment = y / 8U;
 
 		for (size_t g_y = 0; g_y < fptr->height / 8U; g_y++) {
-			u32_t fb_y = (y_segment + g_y) * fb->x_res;
+			u32_t fb_y = y_segment + g_y;
 
 			if ((fb_y + x + g_x) >= fb->size) {
 				return 0;
 			}
-			fb->buf[fb_y + x + g_x] =
-				glyph_ptr[g_x * (fptr->height / 8U) + g_y];
+			fb->buf[fb_y + (x + fptr->width - g_x) *
+				(fb->y_res / 8)] =
+				glyph_ptr[g_x * (fptr->height/ 8U) + g_y];
 		}
 
 	}
@@ -123,7 +124,10 @@ int cfb_print(struct device *dev, char *str, u16_t x, u16_t y)
 				x = 0U;
 				y += fptr->height;
 			}
-			x += fb->kerning + draw_char_vtmono(fb, str[i], x, y);
+			x += fb->kerning +
+				draw_char_vtmono(fb, str[i],
+						 fb->x_res -
+						 fptr->width - x - 1, y);
 		}
 		return 0;
 	}
