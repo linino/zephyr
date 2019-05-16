@@ -27,6 +27,7 @@
 #include <misc/util.h>
 #include <net/net_if.h>
 #include <net/ethernet_vlan.h>
+#include <net/wifi_mgmt.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -257,6 +258,16 @@ struct ethernet_api {
 
 	/** Send a network packet */
 	int (*send)(struct device *dev, struct net_pkt *pkt);
+#if defined(CONFIG_NET_L2_WIFI)
+	/* See include/net/wifi_mgmt.h */
+	int (*wifi_scan)(struct device *dev, scan_result_cb_t cb);
+	int (*wifi_connect)(struct device *dev,
+			    struct wifi_connect_req_params *params);
+	int (*wifi_disconnect)(struct device *dev);
+	int (*wifi_ap_enable)(struct device *dev,
+			 struct wifi_connect_req_params *params);
+	int (*wifi_ap_disable)(struct device *dev);
+#endif /* CONFIG_NET_L2_WIFI */
 };
 
 /** @cond INTERNAL_HIDDEN */
