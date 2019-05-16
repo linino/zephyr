@@ -12,6 +12,36 @@ LOG_MODULE_REGISTER(net_wifi_mgmt, CONFIG_NET_L2_WIFI_MGMT_LOG_LEVEL);
 #include <net/net_core.h>
 #include <net/net_if.h>
 #include <net/wifi_mgmt.h>
+#ifdef CONFIG_NET_L2_WIFI
+#include <net/ethernet.h>
+#endif /* CONFIG_NET_L2_WIFI */
+
+#ifndef CONFIG_NET_L2_WIFI
+static int do_wifi_connect(u32_t mgmt_request, struct device *dev,
+			   struct wifi_connect_req_params *params)
+{
+	struct net_wifi_mgmt_offload *off_api =
+		(struct net_wifi_mgmt_offload *) dev->driver_api;
+
+	if (off_api == NULL || off_api->connect == NULL) {
+		return -ENOTSUP;
+	}
+
+	return off_api->connect(dev, params);
+}
+#else /* CONFIG_NET_L2_WIFI */
+static int do_wifi_connect(u32_t mgmt_request, struct device *dev,
+			   struct wifi_connect_req_params *params)
+{
+	const struct ethernet_api *eth_api = dev->driver_api;
+
+	if (eth_api == NULL || eth_api->wifi_connect == NULL) {
+		return -ENOTSUP;
+	}
+
+	return eth_api->wifi_connect(dev, params);
+}
+#endif
 
 static int wifi_connect(u32_t mgmt_request, struct net_if *iface,
 			void *data, size_t len)
@@ -19,12 +49,6 @@ static int wifi_connect(u32_t mgmt_request, struct net_if *iface,
 	struct wifi_connect_req_params *params =
 		(struct wifi_connect_req_params *)data;
 	struct device *dev = net_if_get_device(iface);
-	struct net_wifi_mgmt_offload *off_api =
-		(struct net_wifi_mgmt_offload *) dev->driver_api;
-
-	if (off_api == NULL || off_api->connect == NULL) {
-		return -ENOTSUP;
-	}
 
 	NET_DBG("%s %u %u %u %s %u",
 		params->ssid, params->ssid_length,
@@ -43,7 +67,7 @@ static int wifi_connect(u32_t mgmt_request, struct net_if *iface,
 		return -EINVAL;
 	}
 
-	return off_api->connect(dev, params);
+	return do_wifi_connect(mgmt_request, dev, params);
 }
 
 NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_WIFI_CONNECT, wifi_connect);
@@ -70,6 +94,7 @@ static void scan_result_cb(struct net_if *iface, int status,
 					entry, sizeof(struct wifi_scan_result));
 }
 
+#ifndef CONFIG_NET_L2_WIFI
 static int wifi_scan(u32_t mgmt_request, struct net_if *iface,
 		     void *data, size_t len)
 {
@@ -83,10 +108,24 @@ static int wifi_scan(u32_t mgmt_request, struct net_if *iface,
 
 	return off_api->scan(dev, scan_result_cb);
 }
+#else /* CONFIG_NET_L2_WIFI */
+static int wifi_scan(u32_t mgmt_request, struct net_if *iface,
+		     void *data, size_t len)
+{
+	struct device *dev = net_if_get_device(iface);
+	const struct ethernet_api *eth_api = dev->driver_api;
+
+	if (eth_api == NULL || eth_api->wifi_scan == NULL) {
+		return -ENOTSUP;
+	}
+
+	return eth_api->wifi_scan(dev, scan_result_cb);
+}
+#endif
 
 NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_WIFI_SCAN, wifi_scan);
 
-
+#ifndef CONFIG_NET_L2_WIFI
 static int wifi_disconnect(u32_t mgmt_request, struct net_if *iface,
 			   void *data, size_t len)
 {
@@ -100,6 +139,20 @@ static int wifi_disconnect(u32_t mgmt_request, struct net_if *iface,
 
 	return off_api->disconnect(dev);
 }
+#else /* CONFIG_NET_L2_WIFI */
+static int wifi_disconnect(u32_t mgmt_request, struct net_if *iface,
+			   void *data, size_t len)
+{
+	struct device *dev = net_if_get_device(iface);
+	const struct ethernet_api *eth_api = dev->driver_api;
+
+	if (eth_api == NULL || eth_api->wifi_disconnect == NULL) {
+		return -ENOTSUP;
+	}
+
+	return eth_api->wifi_disconnect(dev);
+}
+#endif
 
 NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_WIFI_DISCONNECT, wifi_disconnect);
 
@@ -125,6 +178,7 @@ void wifi_mgmt_raise_disconnect_result_event(struct net_if *iface, int status)
 					sizeof(struct wifi_status));
 }
 
+#ifndef CONFIG_NET_L2_WIFI
 static int wifi_ap_enable(u32_t mgmt_request, struct net_if *iface,
 			  void *data, size_t len)
 {
@@ -140,9 +194,26 @@ static int wifi_ap_enable(u32_t mgmt_request, struct net_if *iface,
 
 	return off_api->ap_enable(dev, params);
 }
+#else /* CONFIG_NET_L2_WIFI */
+static int wifi_ap_enable(u32_t mgmt_request, struct net_if *iface,
+			  void *data, size_t len)
+{
+	struct wifi_connect_req_params *params =
+		(struct wifi_connect_req_params *)data;
+	struct device *dev = net_if_get_device(iface);
+	const struct ethernet_api *eth_api = dev->driver_api;
+
+	if (eth_api == NULL || eth_api->wifi_ap_enable == NULL) {
+		return -ENOTSUP;
+	}
+
+	return eth_api->wifi_ap_enable(dev, params);
+}
+#endif /* CONFIG_NET_L2_WIFI */
 
 NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_WIFI_AP_ENABLE, wifi_ap_enable);
 
+#ifndef CONFIG_NET_L2_WIFI
 static int wifi_ap_disable(u32_t mgmt_request, struct net_if *iface,
 			  void *data, size_t len)
 {
@@ -156,5 +227,19 @@ static int wifi_ap_disable(u32_t mgmt_request, struct net_if *iface,
 
 	return off_api->ap_disable(dev);
 }
+#else /* CONFIG_NET_L2_WIFI */
+static int wifi_ap_disable(u32_t mgmt_request, struct net_if *iface,
+			  void *data, size_t len)
+{
+	struct device *dev = net_if_get_device(iface);
+	const struct ethernet_api *eth_api = dev->driver_api;
+
+	if (eth_api == NULL || eth_api->wifi_ap_enable == NULL) {
+		return -ENOTSUP;
+	}
+
+	return eth_api->wifi_ap_disable(dev);
+}
+#endif /* CONFIG_NET_L2_WIFI */
 
 NET_MGMT_REGISTER_REQUEST_HANDLER(NET_REQUEST_WIFI_AP_DISABLE, wifi_ap_disable);
