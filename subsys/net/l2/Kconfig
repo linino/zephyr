@@ -75,6 +75,12 @@ source "subsys/net/l2/ieee802154/Kconfig"
 
 source "subsys/net/l2/openthread/Kconfig"
 
+config NET_L2_WIFI
+        bool "Enable wifi L2 (for non offloaded drivers)"
+	select NET_L2_ETHERNET
+	help
+	  Add L2 driver for non offloaded wifi drivers.
+
 config NET_L2_WIFI_MGMT
 	bool "Enable WiFi Management support"
 	select NET_MGMT
