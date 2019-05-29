@@ -81,6 +81,23 @@
 	mosi-pin = <41>;
 	miso-pin = <11>;
 	sck-pin = <40>;
+
+	spi_ipc0: esp8266-primo@0 {
+		status = "ok";
+		compatible = "spi-ipc";
+		spi-max-frequency = <2000000>;
+		reg = <0>;
+		/*
+		 * nRF52_RX2 used as an output for requesting polling from
+		 * esp8266
+		 */
+		poll-request-gpios = <&gpio0 5 0>;
+		label = "ESP8266-PRIMO";
+
+		spi-ipc-wifi {
+			compatible = "spi-ipc-wifi";
+		};
+	};
 };
 
 
