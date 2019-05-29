@@ -1,0 +1,27 @@
+
+
+menuconfig SPI_IPC
+	bool "SPI inter-processor communication infrastructure"
+	help
+	  Get two or more processors to work over spi in a standard way
+
+if SPI_IPC
+
+menuconfig SPI_IPC_THREAD_PRIO
+	int "Priority of spi-ipc thread"
+	default 2
+	help
+	  Priority of spi-ipc thread
+
+menuconfig SPI_IPC_ETHERNET
+	bool "Enable ethernet over spi ipc"
+	help
+	  Let a remote processor work as an ethernet interface
+
+
+menuconfig SPI_IPC_WIFI_MGMT
+	bool "Enable wifi management over spi ipc"
+	help
+	  Allow a remote processor to take care of wifi management functionalities
+
+endif
