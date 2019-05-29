@@ -35,6 +35,8 @@ source "subsys/storage/Kconfig"
 
 source "subsys/settings/Kconfig"
 
+source "subsys/spi-ipc/Kconfig"
+
 source "subsys/testsuite/Kconfig"
 
 source "subsys/fb/Kconfig"
