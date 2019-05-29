@@ -1,0 +1,36 @@
+#
+# Copyright (c) 2019, Dog Hunter LLC and the Linino community
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+title: SPI-IPC device
+version: 0.1
+
+description: >
+    This binding gives a representation of a generic spi-ipc (inter processor
+    communication over spi) device
+
+inherits:
+    !include spi-device.yaml
+
+#child:
+#     bus: spi-ipc
+
+properties:
+    compatible:
+      type: string
+      category: required
+      description: compatible strings
+      generation: define
+      constraint: "spi-ipc"
+    label:
+      type: string
+      category: required
+      description: Human readable string describing the device (used by Zephyr for API name)
+      generation: define
+    poll-request-gpios:
+      type: compound
+      category: required
+      generation: define, use-prop-name
+...
