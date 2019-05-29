@@ -1,0 +1,20 @@
+#
+# Copyright (c) 2019, Dog Hunter LLC and the Linino community
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+---
+title: SPI-IPC wifi virtual device
+version: 0.1
+
+description: >
+    This binding gives a representation of a spi-ipc wifi virtual device
+
+properties:
+     compatible:
+      type: string
+      category: required
+      description: compatible strings
+      generation: define
+      constraint: "spi-ipc-wifi"
+...
