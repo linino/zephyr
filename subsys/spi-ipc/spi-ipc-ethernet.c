@@ -11,6 +11,7 @@
 #include <spi-ipc/spi-ipc.h>
 #include <spi-ipc/proto.h>
 #include <spi-ipc/ethernet.h>
+#include <spi-ipc/util.h>
 
 LOG_MODULE_DECLARE(LOG_MODULE_NAME);
 
@@ -19,47 +20,6 @@ NET_BUF_POOL_DEFINE(eth_spi_ipc_pool, 2,
 		    sizeof(union spi_thb),
 		    sizeof(struct spi_msg *), NULL);
 
-static int spi_ipc_simple_trans(struct device *spi_ipc_dev,
-				const union spi_thb *request_hdr,
-				void *reply_data,
-				size_t *len)
-{
-	const struct spi_ipc_driver_api *api = spi_ipc_dev->driver_api;
-	struct net_buf *buf =
-		net_buf_alloc_len(&eth_spi_ipc_pool,
-				  sizeof(union spi_thb), 1000), *reply;
-	union spi_thb b;
-	int ret;
-
-	if (!buf) {
-		LOG_ERR("%s: no memory\n", __func__);
-		return -ENOMEM;
-	}
-	net_buf_add_mem(buf, request_hdr, sizeof(*request_hdr));
-	ret = api->submit_buf(spi_ipc_dev, buf, &reply);
-	if (ret < 0) {
-		goto end0;
-	}
-	net_buf_linearize(&b.hdr, sizeof(b.hdr), reply, 0, sizeof(b.hdr));
-	if (spi_ipc_error(&b)) {
-		LOG_ERR("%s: error from remote (%d)\n", __func__,
-			spi_ipc_error(&b));
-		ret = spi_ipc_error(&b);
-		goto end1;
-	}
-	if (reply_data && len && *len) {
-		size_t l = min(*len, spi_ipc_data_len(&b));
-
-		net_buf_linearize(reply_data, l, reply, sizeof(b.hdr), l);
-		*len = l;
-	}
-end1:
-	net_buf_unref(reply);
-end0:
-	net_buf_unref(buf);
-	return ret;
-}
-
 static int spi_ipc_ether_get_mac(struct device *spi_ipc_dev, u8_t mac[6])
 {
 	DECLARE_SPI_IPC_REQUEST_BUF(b, SPI_IPC_PROTO_ETHERNET, MAC_ADDR,
@@ -67,7 +27,8 @@ static int spi_ipc_ether_get_mac(struct device *spi_ipc_dev, u8_t mac[6])
 	int ret;
 	size_t len = 6;
 
-	ret = spi_ipc_simple_trans(spi_ipc_dev, &b, mac, &len);
+	ret = spi_ipc_simple_trans(spi_ipc_dev, &eth_spi_ipc_pool, &b,
+				   mac, &len);
 	if (ret < 0)
 		return ret;
 	if (len != 6) {
@@ -97,14 +58,16 @@ int spi_ipc_ether_start(struct device *spi_ipc_dev, struct device *eth_dev)
 {
 	DECLARE_SPI_IPC_REQUEST_BUF(b, SPI_IPC_PROTO_ETHERNET, START, 0, 0, 0);
 
-	return spi_ipc_simple_trans(spi_ipc_dev, &b, NULL, NULL);
+	return spi_ipc_simple_trans(spi_ipc_dev, &eth_spi_ipc_pool, &b,
+				    NULL, NULL);
 }
 
 int spi_ipc_ether_stop(struct device *spi_ipc_dev, struct device *eth_dev)
 {
 	DECLARE_SPI_IPC_REQUEST_BUF(b, SPI_IPC_PROTO_ETHERNET, STOP, 0, 0, 0);
 
-	return spi_ipc_simple_trans(spi_ipc_dev, &b, NULL, NULL);
+	return spi_ipc_simple_trans(spi_ipc_dev, &eth_spi_ipc_pool, &b,
+				    NULL, NULL);
 }
 
 int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
