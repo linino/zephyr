@@ -22,6 +22,7 @@
 #include <net/ethernet.h>
 #include <net/net_pkt.h>
 #include <spi-ipc/spi-ipc.h>
+#include <spi-ipc/mgmt.h>
 
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
@@ -117,6 +118,9 @@ struct spi_ipc_data {
 	/* Used in case of rx errors (no memory) */
 	int n_discard_subframes;
 	struct spi_config spi_config;
+#ifdef CONFIG_SPI_IPC_MGMT
+	struct spi_ipc_mgmt_data mgmt_data;
+#endif
 };
 
 static struct k_mem_slab spi_ipc_msg_slab;
@@ -131,12 +135,60 @@ NET_BUF_POOL_DEFINE(spi_ipc_pool, 2 * N_BUFFERS_PER_ETH_FRAME,
 		    sizeof(struct spi_msg *), NULL);
 static struct k_thread spi_ipc_thread;
 
-struct k_poll_event events[2 * N_SPI_IPC_DEVS];
+#ifdef CONFIG_SPI_IPC_MGMT
+/* spi done signal, fifo ready, mgmt event */
+#define EVTS_PER_DEV 3
+#else
+/* spi done signal, fifo ready */
+#define EVTS_PER_DEV 2
+#endif
+
+struct k_poll_event events[EVTS_PER_DEV * N_SPI_IPC_DEVS];
 
 #define SPI_IPC_THREAD_STACK_SIZE 1024
 K_THREAD_STACK_MEMBER(spi_ipc_thread_stack, SPI_IPC_THREAD_STACK_SIZE);
 
 struct device *active_devices[N_SPI_IPC_DEVS];
+
+#ifdef CONFIG_SPI_IPC_MGMT
+static int init_mgmt(struct device *dev, struct spi_ipc_data *data)
+{
+	return init_spi_ipc_mgmt(dev, data);
+}
+
+static void init_mgmt_event(struct spi_ipc_data *data, int minor)
+{
+	k_poll_event_init(&events[minor + 2],
+			  K_POLL_TYPE_IGNORE,
+			  K_POLL_MODE_NOTIFY_ONLY,
+			  &data->mgmt_data.diag_signal);
+}
+
+/* Call this with data->sem taken */
+static inline int _check_mgmt_evt(struct spi_ipc_data *data, int *result)
+{
+	int got_signal;
+
+	k_poll_signal_check(&data->mgmt_data.diag_signal, &got_signal, result);
+	if (got_signal)
+		k_poll_signal_reset(&data->spi_signal);
+	return got_signal;
+}
+#else /* !CONFIG_SPI_IPC_MGMT */
+static inline int init_mgmt(struct device *dev, struct spi_ipc_data *data)
+{
+	return 0;
+}
+
+static inline void init_mgmt_event(struct spi_ipc_data *data, int minor)
+{
+}
+
+static inline int _check_mgmt_evt(struct spi_ipc_data *data, int *result)
+{
+	return 0;
+}
+#endif /* !CONFIG_SPI_IPC_MGMT */
 
 static inline
 void spi_ipc_request_spi_xfer(struct spi_ipc_data *data,
@@ -277,6 +329,13 @@ static void setup_dev(struct device *dev)
 	}
 }
 
+#ifdef CONFIG_SPI_IPC_MGMT
+struct spi_ipc_mgmt_data *spi_ipc_get_mgmt_data(struct spi_ipc_data *data)
+{
+	return &data->mgmt_data;
+}
+#endif
+
 static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 {
 	union spi_thb *in = (union spi_thb *)buf;
@@ -374,6 +433,13 @@ static void check_dev(struct device *dev)
 			spi_release(data->spi_dev, &data->spi_config);
 		/* ANYTHING MORE TO DO HERE ? */
 	}
+	if (_check_mgmt_evt(data, &result)) {
+		if (result) {
+			LOG_ERR("ERROR MESSAGE FROM OTHER END (0x%04x)\n",
+				(unsigned short)result);
+			/* FIXME: ANYTHING MORE TO DO HERE ? */
+		}
+	}
 	k_sem_give(&data->sem);
 }
 
@@ -428,6 +494,7 @@ static int spi_ipc_drv_open(struct device *dev, const struct spi_ipc_proto *p,
 	k_poll_event_init(&events[cfg->minor + 1],
 			  K_POLL_TYPE_IGNORE,
 			  K_POLL_MODE_NOTIFY_ONLY, &data->fifo);
+	init_mgmt_event(data, cfg->minor);
 	k_sem_give(&data->sem);
 	return 0;
 }
@@ -550,6 +617,10 @@ static int spi_ipc_init(struct device *dev)
 	k_poll_event_init(&events[cfg->minor + 1],
 			  K_POLL_TYPE_IGNORE,
 			  K_POLL_MODE_NOTIFY_ONLY, &data->fifo);
+
+	if (init_mgmt(dev, data) < 0)
+		LOG_ERR("spi-ipc (%s): low level mgmt init error\n",
+			dev->config->name);
 
 	LOG_DBG("spi-ipc driver initialized (%s)", dev->config->name);
 
