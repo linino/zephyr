@@ -172,4 +172,24 @@ struct spi_ipc_driver_api {
 #endif
 };
 
+/*
+ * Management data structure
+ */
+struct spi_ipc_mgmt_data {
+	struct k_timer alive_timer;
+	struct k_poll_signal diag_signal;
+};
+
+extern void spi_ipc_report_status(struct spi_ipc_data *, int error);
+
+#ifdef CONFIG_SPI_IPC_MGMT
+extern struct spi_ipc_mgmt_data *spi_ipc_get_mgmt_data(struct spi_ipc_data *);
+#else
+static inline struct spi_ipc_mgmt_data *
+spi_ipc_get_mgmt_data(struct spi_ipc_data *dummy)
+{
+	return NULL;
+}
+#endif
+
 #endif /* __SPI_IPC_H__ */

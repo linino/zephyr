@@ -24,4 +24,10 @@ menuconfig SPI_IPC_WIFI_MGMT
 	help
 	  Allow a remote processor to take care of wifi management functionalities
 
+menuconfig SPI_IPC_MGMT
+	bool "Low level spi-ipc management (alive frames)"
+	default y
+	help
+	  Say yes if you want support for low level spi-ipc management protocol
+
 endif
