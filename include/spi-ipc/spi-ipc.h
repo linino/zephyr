@@ -28,34 +28,35 @@ union spi_thb {
 		/* data length (from next "half transaction" on) */
 		uint32_t trans_data_len;
 		/* Error status */
-		uint32_t error;
+#define LAST_REPLY BIT(16)		
+		uint32_t flags_error;
 	} hdr;
 	uint32_t data[8];
 };
 
-#define SPI_IPC_HDR_INITIALIZER(p, c, r, t, d_l, e)			\
+#define SPI_IPC_HDR_INITIALIZER(p, c, r, t, d_l, f_e)			\
 	{								\
 		.magic = SPI_IPC_MAGIC,					\
 		.proto_code = (((u32_t)(p)) << 16UL) | (c) |		\
 			((r) ? (1UL << 15) : 0),			\
 		.trans_data_len = (((u32_t)(t)) << 16UL) | (d_l),	\
-		.error = e,						\
+		.flags_error = f_e,					\
 	}
 
-#define SPI_IPC_HDR_REQUEST_INITIALIZER(p, c, t, d_l, e)		\
-	SPI_IPC_HDR_INITIALIZER(p, c, 1, t, d_l, e)
+#define SPI_IPC_HDR_REQUEST_INITIALIZER(p, c, t, d_l, f_e)		\
+	SPI_IPC_HDR_INITIALIZER(p, c, 1, t, d_l, f_e)
 
-#define SPI_IPC_HDR_REPLY_INITIALIZER(p, c, t, d_l, e)	\
-	SPI_IPC_HDR_INITIALIZER(p, c, 0, t, d_l, e)
+#define SPI_IPC_HDR_REPLY_INITIALIZER(p, c, t, d_l, e, l)	\
+	SPI_IPC_HDR_INITIALIZER(p, c, 0, t, d_l, e | ((l) ? LAST_REPLY : 0))
 
 #define DECLARE_SPI_IPC_REQUEST_BUF(n, p, c, t, d_l, e)			\
 	union spi_thb n = {						\
 		.hdr = SPI_IPC_HDR_REQUEST_INITIALIZER(p, c, t, d_l, e), \
 	}
 
-#define DECLARE_SPI_IPC_BUF(n, p, c, t, d_l, e)				\
+#define DECLARE_SPI_IPC_BUF(n, p, c, t, d_l, e, l)			\
 	union spi_thb n = {						\
-		.hdr = SPI_IPC_HDR_REPLY_INITIALIZER(p, c, t, d_l, e),	\
+		.hdr = SPI_IPC_HDR_REPLY_INITIALIZER(p, c, t, d_l, e, l) \
 	}
 
 static inline uint16_t spi_ipc_proto(union spi_thb *thb)
@@ -122,14 +123,26 @@ static inline int spi_ipc_data_subframes(union spi_thb *thb)
 		(spi_ipc_data_len(thb) & 0x1f) ? 1 : 0;
 }
 
-static inline uint32_t spi_ipc_error(union spi_thb *thb)
+static inline uint16_t spi_ipc_error(union spi_thb *thb)
 {
-	return thb->hdr.error;
+	return thb->hdr.flags_error & 0xffff;
 }
 
-static inline void spi_ipc_set_error(union spi_thb *thb, uint32_t error)
+static inline void spi_ipc_set_error(union spi_thb *thb, uint16_t error)
 {
-	thb->hdr.error = error;
+	thb->hdr.flags_error = (thb->hdr.flags_error & 0xffff0000UL) | error;
+}
+
+static inline int spi_ipc_is_last_reply(union spi_thb *thb)
+{
+	return thb->hdr.flags_error & LAST_REPLY;
+}
+
+static inline void spi_ipc_set_last_reply(union spi_thb *thb, int lr)
+{
+	thb->hdr.flags_error &= ~LAST_REPLY;
+	if (lr)
+		thb->hdr.flags_error |= LAST_REPLY;
 }
 
 /* Opaque instance data */
