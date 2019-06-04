@@ -73,7 +73,8 @@ int spi_ipc_ether_stop(struct device *spi_ipc_dev, struct device *eth_dev)
 int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
 {
 	int ret;
-	DECLARE_SPI_IPC_BUF(thb, SPI_IPC_PROTO_ETHERNET, NET_PACKET, 0, 0, 0);
+	DECLARE_SPI_IPC_BUF(thb, SPI_IPC_PROTO_ETHERNET, NET_PACKET, 0, 0, 0,
+			    0);
 	size_t len = net_pkt_get_len(pkt);
 	struct net_buf *hdr, *buf;
 	const struct spi_ipc_driver_api *api = dev->driver_api;

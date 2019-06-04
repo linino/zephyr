@@ -60,8 +60,8 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
  *
  */
 struct spi_msg {
-	/* Error status of message */
-	int error;
+	/* Error status of message + flags (last reply) */
+	u32_t flags_error;
 	/* Total message length in bytes, excluding the header */
 	unsigned int data_len;
 	/* Protocol + code */
@@ -366,7 +366,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 			return;
 		}
 		data->n_discard_subframes = 0;
-		data->curr_rx_spi_msg->error = in->hdr.error;
+		data->curr_rx_spi_msg->flags_error = in->hdr.flags_error;
 		data->curr_rx_spi_msg->proto_code = in->hdr.proto_code;
 		data->curr_rx_spi_msg->netbuf = data->curr_rx_net_buf;
 		data->curr_rx_spi_msg->reply = NULL;
@@ -513,7 +513,7 @@ static int spi_ipc_submit_buf(struct device *dev,
 		return stat;
 	}
 	net_buf_linearize(&header, sizeof(header), outgoing, 0, sizeof(header));
-	msg->error = -ETIMEDOUT;
+	msg->flags_error = (u16_t)(-ETIMEDOUT);
 	msg->data_len = spi_ipc_data_len(&header);
 	msg->reply = NULL;
 	msg->netbuf = outgoing;

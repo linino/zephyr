@@ -27,7 +27,7 @@ static void spi_ipc_mgmt_alive(struct k_timer *timer)
 	struct device *spi_ipc_dev = k_timer_user_data_get(timer);
 
 	/* Send an alive message to the other end */
-	DECLARE_SPI_IPC_BUF(b, SPI_IPC_PROTO_MGMT, ALIVE, 0, 0, 0);
+	DECLARE_SPI_IPC_BUF(b, SPI_IPC_PROTO_MGMT, ALIVE, 0, 0, 0, 0);
 
 	stat = spi_ipc_simple_trans(spi_ipc_dev, &spi_ipc_mgmt_pool, &b,
 				    NULL, NULL);
