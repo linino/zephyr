@@ -212,4 +212,6 @@ spi_ipc_get_mgmt_data(struct spi_ipc_data *dummy)
 }
 #endif
 
+extern u16_t spi_ipc_new_transaction(void);
+
 #endif /* __SPI_IPC_H__ */
