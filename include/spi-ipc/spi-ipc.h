@@ -175,6 +175,8 @@ struct spi_ipc_proto {
 	void *priv;
 };
 
+typedef void (*buf_reply_cb)(struct net_buf *reply, void *cb_arg);
+
 /* Driver API */
 struct spi_ipc_driver_api {
 	/*
@@ -187,10 +189,7 @@ struct spi_ipc_driver_api {
 	 * applicable
 	 */
 	int (*submit_buf)(struct device *dev, struct net_buf *request,
-			  struct net_buf **reply);
-#ifdef CONFIG_SPI_IPC_ASYNC
-	/* FIXME: NON BLOCKING VARIANT, RECEIVES A CALLBACK POINTER */
-#endif
+			  buf_reply_cb reply_cb, void *cb_arg);
 };
 
 /*
