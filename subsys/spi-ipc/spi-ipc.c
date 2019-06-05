@@ -72,8 +72,9 @@ struct spi_msg {
 	struct net_buf *netbuf;
 	/* Pointer to relevant reply (if any) */
 	struct spi_msg *reply;
-	/* Completion semaphore */
-	struct k_sem completion_sem;
+	/* Callback pointer and relevant arg */
+	buf_reply_cb reply_cb;
+	void *cb_arg;
 	/* Used to link to outstanding messages (requests) */
 	sys_dnode_t list;
 };
@@ -393,9 +394,15 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		if (request) {
 			/* Input message is a reply */
 			request->reply = data->curr_rx_spi_msg;
-			/* Remove related request from outstanding list */
-			sys_dlist_remove(&request->list);
-			k_sem_give(&request->completion_sem);
+			if (request->reply_cb)
+				request->reply_cb(data->curr_rx_net_buf,
+						  request->cb_arg);
+			/*
+			 * Remove related request from outstanding list,
+			 * if this is the last reply
+			 */
+			if (data->curr_rx_spi_msg->flags_error & LAST_REPLY)
+				sys_dlist_remove(&request->list);
 		} else
 			data->curr_rx_proto->rx_cb(data->curr_rx_proto,
 						   data,
@@ -503,7 +510,7 @@ static int spi_ipc_drv_open(struct device *dev, const struct spi_ipc_proto *p,
 
 static int spi_ipc_submit_buf(struct device *dev,
 			      struct net_buf *outgoing,
-			      struct net_buf **incoming)
+			      buf_reply_cb reply_cb, void *cb_arg)
 {
 	int stat, ret = 0;
 	struct spi_ipc_data *data = dev->driver_data;
@@ -520,23 +527,14 @@ static int spi_ipc_submit_buf(struct device *dev,
 	msg->reply = NULL;
 	msg->netbuf = outgoing;
 	msg->proto_code = header.hdr.proto_code;
-	k_sem_init(&msg->completion_sem, 0, 1);
+	msg->reply_cb = reply_cb;
+	msg->cb_arg = cb_arg;
 	/* net buf user data array contains pointer to relevant spi message */
 	BUILD_ASSERT(sizeof(msg) <= CONFIG_NET_BUF_USER_DATA_SIZE);
 
 	/* Enqueue buffer */
 	net_buf_put(&data->fifo, outgoing);
 
-	if (!spi_ipc_is_request(&header) || !incoming)
-		/* Discard any incoming */
-		goto end;
-
-	/* Block until incoming is available */
-	k_sem_take(&msg->completion_sem, 1000);
-
-	/* Read incoming header */
-	*incoming = msg->reply ? msg->reply->netbuf : NULL;
-end:
 	return ret;
 }
 

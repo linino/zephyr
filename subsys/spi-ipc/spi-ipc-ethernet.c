@@ -97,7 +97,7 @@ int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
 	net_buf_ref(buf);
 	net_pkt_unref(pkt);
 	/* Submit buffer, no reply expected */
-	ret = api->submit_buf(dev, buf, NULL);
+	ret = api->submit_buf(dev, buf, NULL, NULL);
 	return ret;
 }
 
