@@ -33,7 +33,7 @@ static void reply_cb(struct net_buf *reply, void *cb_arg)
 
 int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 			 struct net_buf_pool *pool,
-			 const union spi_thb *request_hdr,
+			 union spi_thb *request_hdr,
 			 void *reply_data,
 			 size_t *len)
 {
@@ -49,6 +49,7 @@ int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 		LOG_ERR("%s: no memory\n", __func__);
 		return -ENOMEM;
 	}
+	spi_ipc_set_transaction(request_hdr, spi_ipc_new_transaction());
 	net_buf_add_mem(buf, request_hdr, sizeof(*request_hdr));
 	preply = reply_data && len && *len ? &reply : NULL;
 	k_sem_init(&stdata.s, 0, 1);

@@ -83,6 +83,7 @@ int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
 		return -EINVAL;
 
 	spi_ipc_set_data_len(&thb, len);
+	spi_ipc_set_transaction(&thb, spi_ipc_new_transaction());
 	hdr = net_pkt_get_frag(pkt, 1000);
 	if (!hdr) {
 		LOG_ERR("%s: cannot allocate header fragment", __func__);

@@ -27,7 +27,7 @@
  */
 extern int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 				struct net_buf_pool *pool,
-				const union spi_thb *request_hdr,
+				union spi_thb *request_hdr,
 				void *reply_data,
 				size_t *len);
 
