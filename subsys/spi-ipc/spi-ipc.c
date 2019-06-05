@@ -632,6 +632,14 @@ static struct spi_ipc_driver_api spi_ipc_api_funcs = {
 	.submit_buf = spi_ipc_submit_buf,
 };
 
+/* Slave trans # must have bit 15 set */
+static atomic_t _transaction_num = ATOMIC_INIT(0UL);
+
+u16_t spi_ipc_new_transaction(void)
+{
+	return (atomic_add(&_transaction_num, 1) & 0xffffUL) | BIT(15);
+}
+
 #ifdef DT_SPI_IPC_0_LABEL
 
 struct spi_ipc_data spi_ipc_data0;
