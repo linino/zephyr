@@ -96,14 +96,22 @@ static inline int spi_ipc_is_reply(union spi_thb *thb)
 	return !spi_ipc_is_request(thb);
 }
 
-static inline int spi_ipc_reply_matches(union spi_thb *thb, u32_t proto_code)
-{
-	return thb->hdr.proto_code == proto_code;
-}
-
 static inline uint16_t spi_ipc_transaction(union spi_thb *thb)
 {
 	return thb->hdr.trans_data_len >> 16;
+}
+
+static inline void spi_ipc_set_transaction(union spi_thb *thb, uint16_t t)
+{
+	thb->hdr.trans_data_len &= 0x0000ffffUL;
+	thb->hdr.trans_data_len |= (t << 16UL);
+}
+
+static inline int spi_ipc_reply_matches(union spi_thb *thb, u32_t proto_code,
+					u16_t transaction)
+{
+	return thb->hdr.proto_code == proto_code &&
+		spi_ipc_transaction(thb) == transaction;
 }
 
 static inline uint16_t spi_ipc_data_len(union spi_thb *thb)

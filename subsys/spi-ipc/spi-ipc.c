@@ -62,6 +62,8 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 struct spi_msg {
 	/* Error status of message + flags (last reply) */
 	u32_t flags_error;
+	/* Transaction number */
+	u16_t trans;
 	/* Total message length in bytes, excluding the header */
 	unsigned int data_len;
 	/* Protocol + code */
@@ -251,7 +253,7 @@ static struct spi_msg *_find_relevant_request(struct spi_ipc_data *data,
 		return NULL;
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&data->outstanding, r, list) {
-		if (spi_ipc_reply_matches(in, r->proto_code))
+		if (spi_ipc_reply_matches(in, r->proto_code, r->trans))
 			return r;
 	}
 	return NULL;
