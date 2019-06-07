@@ -14,6 +14,14 @@
 #include <device.h>
 #include <net/net_pkt.h>
 
+enum spi_ipc_wifi_mgmt_sec {
+	SEC_OPEN = 0,
+	SEC_WEP,
+	SEC_WPA_PSK,
+	SEC_WPA2_PSK,
+	SEC_WPA_WPA2_PSK,
+};
+
 extern int spi_ipc_wifi_mgmt_scan(struct device *dev, scan_result_cb_t cb);
 extern int spi_ipc_wifi_mgmt_connect(struct device *dev,
 				     struct wifi_connect_req_params *params);
