@@ -131,11 +131,12 @@ struct net_wifi_mgmt_offload {
 	int (*ap_disable)(struct device *dev);
 };
 
-#ifdef CONFIG_WIFI_OFFLOAD
+#if defined CONFIG_WIFI_OFFLOAD || defined CONFIG_NET_L2_WIFI
 
 void wifi_mgmt_raise_connect_result_event(struct net_if *iface, int status);
 void wifi_mgmt_raise_disconnect_result_event(struct net_if *iface, int status);
 
-#endif /* CONFIG_WIFI_OFFLOAD */
+#endif /* CONFIG_WIFI_OFFLOAD || CONFIG_NET_L2_WIFI */
+
 
 #endif /* ZEPHYR_INCLUDE_NET_WIFI_MGMT_H_ */
