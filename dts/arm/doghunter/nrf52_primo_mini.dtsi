@@ -94,7 +94,7 @@
 		 * nRF52_RX2 used as an output for requesting polling from
 		 * esp8266
 		 */
-		poll-request-gpios = <&gpio0 5 0>;
+		poll-request-gpios = <&gpio0 19 0>;
 		label = "ESP8266-PRIMO";
 
 		spi-ipc-wifi {
