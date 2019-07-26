@@ -23,6 +23,7 @@
 #include <net/net_pkt.h>
 #include <spi-ipc/spi-ipc.h>
 #include <spi-ipc/mgmt.h>
+#include <spi-ipc/proto.h>
 
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
@@ -245,19 +246,31 @@ static const struct spi_ipc_proto *_find_proto(struct spi_ipc_data *data,
 	return NULL;
 }
 
-static struct spi_msg *_find_relevant_request(struct spi_ipc_data *data,
-					      union spi_thb *in)
+static struct spi_msg *_find_matching_request(struct spi_ipc_data *data)
 {
+	struct spi_msg *m = data->curr_rx_spi_msg;
 	struct spi_msg *r;
 
-	if (!spi_ipc_is_reply(in))
+	LOG_DBG("%s entered, proto/code = 0x%04x, trans = %u", __func__,
+		m->proto_code, m->trans);
+
+	if (m->proto_code & SPI_IPC_REQUEST) {
 		/* Not a reply at all */
+		LOG_DBG("%s, message is not a reply", __func__);
 		return NULL;
+	}
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&data->outstanding, r, list) {
-		if (spi_ipc_reply_matches(in, r->proto_code, r->trans))
+		LOG_DBG("%s: trying request %p, proto/code = 0x%04x, trans = %u",
+			__func__, r, r->proto_code, r->trans);
+		if ((r->proto_code & ~SPI_IPC_REQUEST) ==
+		    (m->proto_code & ~SPI_IPC_REQUEST) &&
+		    r->trans == m->trans) {
+			LOG_DBG("%s: found request %p", __func__, r);
 			return r;
+		}
 	}
+	LOG_DBG("%s: no request found", __func__);
 	return NULL;
 }
 
@@ -343,6 +356,7 @@ struct spi_ipc_mgmt_data *spi_ipc_get_mgmt_data(struct spi_ipc_data *data)
 static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 {
 	union spi_thb *in = (union spi_thb *)buf;
+	struct spi_msg *request;
 	int stat;
 	size_t l, tot_msg_len;
 
@@ -389,9 +403,9 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		l = sizeof(union spi_thb);
 	net_buf_add_mem(data->curr_rx_net_buf, in, l);
 	if (net_buf_frags_len(data->curr_rx_net_buf) >= tot_msg_len) {
-		/* Last subframe in a frame */
-		struct spi_msg *request = _find_relevant_request(data, in);
-
+		request = _find_matching_request(data);
+		LOG_DBG("%s: frame received, matching request = %p", __func__,
+			request);
 		if (request) {
 			/* Input message is a reply */
 			request->reply = data->curr_rx_spi_msg;
