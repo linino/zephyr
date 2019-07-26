@@ -186,10 +186,11 @@ struct spi_ipc_driver_api {
 		    void *proto_data);
 	/*
 	 * Sends a message, blocks until relevant reply has been received, if
-	 * applicable
+	 * applicable, or until @expiry timeout elapses (K_FOREVER disables
+	 * timeout)
 	 */
 	int (*submit_buf)(struct device *dev, struct net_buf *request,
-			  buf_reply_cb reply_cb, void *cb_arg);
+			  buf_reply_cb reply_cb, void *cb_arg, s32_t expiry);
 };
 
 /*

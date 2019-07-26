@@ -51,6 +51,14 @@ static void _scan_msg_cb(struct net_buf *reply, void *cb_arg)
 	int error;
 	u8_t rssi, sec, ch, ssl;
 
+	LOG_DBG("%s %d\n", __func__, __LINE__);
+
+	if (!reply) {
+		LOG_DBG("NO REPLY, TIMEOUT !\n");
+		k_sem_give(&scbd->completion_sem);
+		return;
+	}
+
 	net_buf_linearize(&thb.hdr, sizeof(thb.hdr), reply, 0, sizeof(thb.hdr));
 	error = spi_ipc_error(&thb);
 	if (error) {
@@ -110,7 +118,7 @@ int spi_ipc_wifi_mgmt_scan(struct device *dev, scan_result_cb_t cb)
 	scbd.iface = iface;
 	k_sem_init(&scbd.completion_sem, 0, 1);
 	net_buf_add_mem(buf, &b, sizeof(b));
-	ret = api->submit_buf(dev, buf, _scan_msg_cb, &scbd);
+	ret = api->submit_buf(dev, buf, _scan_msg_cb, &scbd, 10000);
 	if (ret)
 		return ret;
 	if (k_sem_take(&scbd.completion_sem, 10000)) {
@@ -179,7 +187,7 @@ int spi_ipc_wifi_mgmt_connect(struct device *dev,
 		memcpy(&b, &params->psk[sizeof(b)], len);
 		net_buf_add_mem(buf, &b, sizeof(b));
 	}
-	ret = api->submit_buf(dev, buf, _connect_msg_cb, iface);
+	ret = api->submit_buf(dev, buf, _connect_msg_cb, iface, 5000);
 	if (ret) {
 		net_buf_unref(buf);
 	}
@@ -210,7 +218,7 @@ int spi_ipc_wifi_mgmt_disconnect(struct device *dev)
 		return -ENOMEM;
 	}
 	net_buf_add_mem(buf, &b, sizeof(b));
-	ret = api->submit_buf(dev, buf, _disconnect_msg_cb, iface);
+	ret = api->submit_buf(dev, buf, _disconnect_msg_cb, iface, 2000);
 	if (ret) {
 		net_buf_unref(buf);
 	}

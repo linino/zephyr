@@ -27,7 +27,10 @@ static void reply_cb(struct net_buf *reply, void *cb_arg)
 		LOG_ERR("%s: NULL cb_arg\n", __func__);
 		return;
 	}
-	stdata->reply = reply;
+	if (!reply) {
+		LOG_ERR("%s: NO REPLY: timeout !!\n", __func__);
+	} else
+		  stdata->reply = reply;
 	k_sem_give(&stdata->s);
 }
 
@@ -35,7 +38,7 @@ int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 			 struct net_buf_pool *pool,
 			 union spi_thb *request_hdr,
 			 void *reply_data,
-			 size_t *len)
+			 size_t *len, s32_t timeout)
 {
 	const struct spi_ipc_driver_api *api = spi_ipc_dev->driver_api;
 	struct net_buf *buf =
@@ -54,11 +57,11 @@ int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 	preply = reply_data && len && *len ? &reply : NULL;
 	k_sem_init(&stdata.s, 0, 1);
 	ret = api->submit_buf(spi_ipc_dev, buf,
-			      preply ? reply_cb : NULL, &stdata);
+			      preply ? reply_cb : NULL, &stdata, timeout);
 	if (ret < 0 || !preply) {
 		goto end0;
 	}
-	if (k_sem_take(&stdata.s, 1000)) {
+	if (k_sem_take(&stdata.s, K_FOREVER)) {
 		LOG_ERR("%s: timeout\n", __func__);
 		goto end0;
 	}

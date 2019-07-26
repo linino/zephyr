@@ -29,8 +29,9 @@ static void spi_ipc_mgmt_alive(struct k_timer *timer)
 	/* Send an alive message to the other end */
 	DECLARE_SPI_IPC_BUF(b, SPI_IPC_PROTO_MGMT, ALIVE, 0, 0, 0, 0);
 
+	/* Not a request, timeout is actually ignored */
 	stat = spi_ipc_simple_trans(spi_ipc_dev, &spi_ipc_mgmt_pool, &b,
-				    NULL, NULL);
+				    NULL, NULL, 0);
 	if (stat < 0) {
 		LOG_ERR("%s: spi_ipc_simple_trans() returns error %d\n",
 			__func__, stat);

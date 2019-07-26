@@ -24,12 +24,14 @@
  * @reply_data: pointer to reply data (can be NULL)
  * @len: pointer to reply data length (must be initialized to expected max len,
  *       it is set to actual length by function on success).
+ * @timeout: request timeout (K_FOREVER disables timeout)
  */
 extern int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 				struct net_buf_pool *pool,
 				union spi_thb *request_hdr,
 				void *reply_data,
-				size_t *len);
+				size_t *len,
+				s32_t timeout);
 
 
 #endif /* __SPI_IPC_UTIL_H__ */

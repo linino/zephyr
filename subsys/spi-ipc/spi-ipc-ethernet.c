@@ -28,7 +28,7 @@ static int spi_ipc_ether_get_mac(struct device *spi_ipc_dev, u8_t mac[6])
 	size_t len = 6;
 
 	ret = spi_ipc_simple_trans(spi_ipc_dev, &eth_spi_ipc_pool, &b,
-				   mac, &len);
+				   mac, &len, 2000);
 	if (ret < 0)
 		return ret;
 	if (len != 6) {
@@ -59,7 +59,7 @@ int spi_ipc_ether_start(struct device *spi_ipc_dev, struct device *eth_dev)
 	DECLARE_SPI_IPC_REQUEST_BUF(b, SPI_IPC_PROTO_ETHERNET, START, 0, 0, 0);
 
 	return spi_ipc_simple_trans(spi_ipc_dev, &eth_spi_ipc_pool, &b,
-				    NULL, NULL);
+				    NULL, NULL, 2000);
 }
 
 int spi_ipc_ether_stop(struct device *spi_ipc_dev, struct device *eth_dev)
@@ -67,7 +67,7 @@ int spi_ipc_ether_stop(struct device *spi_ipc_dev, struct device *eth_dev)
 	DECLARE_SPI_IPC_REQUEST_BUF(b, SPI_IPC_PROTO_ETHERNET, STOP, 0, 0, 0);
 
 	return spi_ipc_simple_trans(spi_ipc_dev, &eth_spi_ipc_pool, &b,
-				    NULL, NULL);
+				    NULL, NULL, 2000);
 }
 
 int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
@@ -98,7 +98,7 @@ int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
 	net_buf_ref(buf);
 	net_pkt_unref(pkt);
 	/* Submit buffer, no reply expected */
-	ret = api->submit_buf(dev, buf, NULL, NULL);
+	ret = api->submit_buf(dev, buf, NULL, NULL, 0);
 	return ret;
 }
 

@@ -415,6 +415,15 @@ struct spi_ipc_mgmt_data *spi_ipc_get_mgmt_data(struct spi_ipc_data *data)
 }
 #endif
 
+static void remove_outstanding_request(struct spi_msg **_request)
+{
+	struct spi_msg *request = *_request;
+
+	sys_dlist_remove(&request->list);
+	net_buf_unref(request->netbuf);
+	k_mem_slab_free(&spi_ipc_msg_slab, (void **)_request);
+}
+
 static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 {
 	union spi_thb *in = (union spi_thb *)buf;
@@ -494,7 +503,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 			 */
 			if (data->curr_rx_spi_msg->flags_error & LAST_REPLY) {
 				LOG_DBG("last reply for request");
-				sys_dlist_remove(&request->list);
+				remove_outstanding_request(&request);
 			}
 		} else {
 			LOG_DBG("request/notification received");
@@ -557,11 +566,51 @@ static s32_t get_dev_first_req_to(struct device *dev)
 	return m ? m->expiry : K_FOREVER;
 }
 
+static void update_dev_first_timeout(struct device *dev, u32_t delta)
+{
+	struct spi_ipc_data *data = dev->driver_data;
+	struct spi_msg *m =
+		SYS_DLIST_PEEK_HEAD_CONTAINER(&data->outstanding, m, list);
+
+	if (!m) {
+		LOG_ERR("%s invoked with no message !!", __func__);
+		return;
+	}
+	m->expiry -= delta;
+	if (m->expiry < 0) {
+		LOG_ERR("%s: new timeout is < 0 !!", __func__);
+		m->expiry = 0;
+	}
+	LOG_DBG("%s: new timeout = %d", __func__, m->expiry);
+}
+
+static void handle_to_requests(struct device *dev)
+{
+	struct spi_ipc_data *data = dev->driver_data;
+	struct spi_msg *m =
+		SYS_DLIST_PEEK_HEAD_CONTAINER(&data->outstanding, m, list);
+
+	LOG_DBG("%s, message %p", __func__, m);
+	if (!m->reply) {
+		/*
+		 * No reply received within specified timeout, invoke reply
+		 * cb with NULL reply parameter
+		 */
+		LOG_DBG("%s: no reply, invoking reply_cb(NULL, ...)", __func__);
+		if (m->reply_cb)
+			m->reply_cb(NULL, m->cb_arg);
+	}
+	LOG_DBG("%s: freeing message and relevant netbuf", __func__);
+	remove_outstanding_request(&m);
+}
+
 /* SPI IPC thread */
 static void spi_ipc_main(void *arg)
 {
 	int i, stat, ndevs;
 	s32_t next_timeout = K_FOREVER, to;
+	s64_t poll_start;
+	u32_t delta;
 
 	while (1) {
 		struct device *dev_with_request_to;
@@ -584,17 +633,26 @@ static void spi_ipc_main(void *arg)
 			continue;
 		}
 
-		LOG_ERR("%s: entering k_poll\n", __func__);
+		LOG_ERR("%s: entering k_poll, next_timeout = %d\n", __func__,
+			next_timeout);
+		poll_start = k_uptime_get();
 		stat = k_poll(events, ARRAY_SIZE(events), next_timeout);
+		delta = k_uptime_delta_32(&poll_start);
 		LOG_ERR("%s: k_poll() returned %d\n", __func__, stat);
-
-		if (stat == -EAGAIN) {
-			/* Request timeout */
-		}
 
 		if (stat == -EINTR) {
 			/* FIXME: DO SOMETHING HERE ?? */
+			continue;
 		}
+
+		if (stat == -EAGAIN) {
+			/* Request timeout */
+			handle_to_requests(dev_with_request_to);
+			continue;
+		}
+
+		/* No timeout, update next */
+		update_dev_first_timeout(dev_with_request_to, delta);
 
 		for (i = 0; i < ARRAY_SIZE(active_devices); i++) {
 			if (active_devices[i]) {
@@ -640,7 +698,7 @@ static int spi_ipc_drv_open(struct device *dev, const struct spi_ipc_proto *p,
 
 static int spi_ipc_submit_buf(struct device *dev,
 			      struct net_buf *outgoing,
-			      buf_reply_cb reply_cb, void *cb_arg)
+			      buf_reply_cb reply_cb, void *cb_arg, s32_t expiry)
 {
 	int stat, ret = 0;
 	struct spi_ipc_data *data = dev->driver_data;
@@ -659,7 +717,7 @@ static int spi_ipc_submit_buf(struct device *dev,
 	msg->proto_code = header.hdr.proto_code;
 	msg->reply_cb = reply_cb;
 	msg->cb_arg = cb_arg;
-	msg->expiry = K_FOREVER;
+	msg->expiry = expiry;
 	/* net buf user data array contains pointer to relevant spi message */
 	BUILD_ASSERT(sizeof(msg) <= CONFIG_NET_BUF_USER_DATA_SIZE);
 
