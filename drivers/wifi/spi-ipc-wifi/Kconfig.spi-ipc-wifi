@@ -1,0 +1,15 @@
+# Kconfig - esp8266-spi WiFi driver options
+
+#
+# Copyright (c) 2018 WhatsNext gmbh
+# Author: Davide Ciminaghi <davide@linino.org>
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+menuconfig WIFI_SPI_IPC
+	bool "spi-ipc WiFi driver support"
+	depends on WIFI
+	depends on SPI_IPC_ETHERNET
+	depends on SPI_IPC_WIFI_MGMT
+	select NET_L2_WIFI
