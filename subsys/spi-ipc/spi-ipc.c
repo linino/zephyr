@@ -76,6 +76,8 @@ struct spi_msg {
 	/* Callback pointer and relevant arg */
 	buf_reply_cb reply_cb;
 	void *cb_arg;
+	/* Expiry time (requests, K_FOREVER means forever) */
+	s32_t expiry;
 	/* Used to link to outstanding messages (requests) */
 	sys_dnode_t list;
 };
@@ -274,6 +276,43 @@ static struct spi_msg *_find_matching_request(struct spi_ipc_data *data)
 	return NULL;
 }
 
+static int check_req_timeout(sys_dnode_t *node, void *data)
+{
+	/*
+	 * m = spi message to be inserted,
+	 * n = next spi message in requests list
+	 * The outstanding requests list is a delta list: members are ordered
+	 * by increasing expiry field.
+	 */
+	struct spi_msg *m = data;
+	struct spi_msg *n = SYS_DLIST_CONTAINER(node, n, list);
+
+	/* No next: this should never happen, actually */
+	if (!n)
+		return 0;
+	/*
+	 * Node to be inserted never expires, just append it at the end of
+	 * the list
+	 */
+	if (m->expiry == K_FOREVER)
+		return 0;
+	/*
+	 * next node never expires
+	 */
+	if (n->expiry == K_FOREVER)
+		return 1;
+	/*
+	 * next node (n) expires after the node to be inserted (m)
+	 */
+	if (m->expiry <= n->expiry) {
+		n->expiry -= m->expiry;
+		return 1;
+	}
+	/* Go on searching */
+	m->expiry -= n->expiry;
+	return 0;
+}
+
 static void setup_dev(struct device *dev)
 {
 	struct spi_ipc_data *data = dev->driver_data;
@@ -285,34 +324,56 @@ static void setup_dev(struct device *dev)
 	k_sem_take(&data->sem, K_FOREVER);
 	if (!data->curr_tx_net_buf) {
 		data->curr_tx_net_buf = net_buf_get(&data->fifo, 0);
+		LOG_DBG("%s: got buffer %p\n", __func__, data->curr_tx_net_buf);
 	}
+	LOG_DBG("%s %d, curr_tx_net_buf  = %p\n", __func__, __LINE__,
+		data->curr_tx_net_buf);
 	if (data->curr_tx_net_buf) {
-		size_t l;
+		size_t l, _l;
+		void *ptr;
+		struct spi_msg *m;
 
 		if (!data->curr_tx_spi_msg) {
 			memcpy(&data->curr_tx_spi_msg,
 			       data->curr_tx_net_buf->user_data,
 			       sizeof(data->curr_tx_spi_msg));
 		}
-		l = min(net_buf_frags_len(data->curr_tx_net_buf), 32);
+		m = data->curr_rx_spi_msg;
+		_l = net_buf_frags_len(data->curr_tx_net_buf);
+		l = min(_l, sizeof(union spi_thb));
+		ptr = net_buf_pull_mem(data->curr_tx_net_buf, l);
+
+		if (!ptr) {
+			LOG_ERR("%s %d, no data in buffer\n", __func__,
+				__LINE__);
+			net_buf_unref(data->curr_tx_net_buf);
+			return;
+		}
 		memset(data->spi_output[data->output_index].data, 0,
 		       sizeof(data->spi_output[0]));
-		memcpy(data->spi_output[data->output_index].data,
-		       net_buf_pull_mem(data->curr_tx_net_buf, l), l);
-		data->output_index = (data->output_index + 1) & 0x1;
+		memcpy(data->spi_output[data->output_index].data, ptr, l);
 		data->tx_bs = &data->spi_output_bs;
-		if ((l - sizeof(union spi_thb)) >=
-		    data->curr_tx_spi_msg->data_len ) {
+		data->spi_output_buf.buf =
+		    &data->spi_output[data->output_index];
+		data->output_index = (data->output_index + 1) & 0x1;
+
+		if ((_l >= m->data_len + sizeof(union spi_thb))) {
 			/* Transmitting header */
 			union spi_thb *thb = data->spi_output;
 
+			LOG_DBG("message proto/type = %d/%d\n",
+				spi_ipc_proto(thb), spi_ipc_code(thb));
+
 			if (spi_ipc_is_request(thb)) {
+				LOG_DBG("message is a request, appending to list of outstanding requests");
 				/*
 				 * If message is a request, append it
 				 * to the list of outstanding requests
 				 */
-				sys_dlist_append(&data->outstanding,
-						 &data->curr_tx_spi_msg->list);
+				sys_dlist_insert_at(&data->outstanding,
+						    &m->list,
+						    check_req_timeout,
+						    m);
 				/*
 				 * Buffer will be unreferenced after tx, keep
 				 * a reference to it
@@ -320,11 +381,11 @@ static void setup_dev(struct device *dev)
 				net_buf_ref(data->curr_tx_net_buf);
 			}
 		}
-		if (l <= sizeof(union spi_thb)) {
+		if (_l <= sizeof(union spi_thb)) {
 			/* Last tx for this message All done */
 			net_buf_unref(data->curr_tx_net_buf);
 			k_mem_slab_free(&spi_ipc_msg_slab,
-					(void **)&data->curr_rx_spi_msg);
+					(void **)&data->curr_tx_spi_msg);
 			data->curr_tx_net_buf = NULL;
 			data->curr_tx_spi_msg = NULL;
 		}
@@ -336,10 +397,11 @@ static void setup_dev(struct device *dev)
 	data->input_index = (data->input_index + 1) & 0x1;
 	k_sem_give(&data->sem);
 
+	LOG_DBG("Transceiving: tx_bs = %p, buffers[0] = %p, buf = %p\n",
+		data->tx_bs, &data->tx_bs->buffers[0], data->tx_bs->buffers[0].buf);
 	stat = spi_transceive_async(data->spi_dev, &data->spi_config,
 				    data->tx_bs, &data->spi_input_bs,
 				    &data->spi_signal);
-
 	if (data->tx_bs) {
 		/* Request a transfer via gpio (we're slave) */
 		spi_ipc_request_spi_xfer(data, cfg);
@@ -360,20 +422,35 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 	int stat;
 	size_t l, tot_msg_len;
 
+	if (data->n_discard_subframes) {
+		LOG_DBG("%s: discarding frame, counter = %d",
+			__func__, data->n_discard_subframes);
+		/* Discarding input subframes (error or unsupported proto) */
+		data->n_discard_subframes--;
+		return;
+	}
 	if (!data->curr_rx_net_buf) {
+		if (in->hdr.magic != SPI_IPC_MAGIC) {
+			LOG_DBG("%s: no spi magic (0x%08x)", __func__,
+				in->hdr.magic);
+			return;
+		}
 		/* First sub frame received */
 		data->curr_rx_proto = _find_proto(data, spi_ipc_proto(in),
 						  &data->curr_rx_proto_data);
 		if (!data->curr_rx_proto) {
-			LOG_DBG("Unsupported protocol, discarding frame\n");
+			LOG_DBG("Unsupported protocol 0x%04x, discarding frame", spi_ipc_proto(in));
 			data->n_discard_subframes = spi_ipc_data_subframes(in);
 			return;
 		}
+		LOG_DBG("msg started, rx proto = %s",
+			data->curr_rx_proto->name);
 		data->curr_rx_net_buf =
 			net_buf_alloc_len(&spi_ipc_pool,
 					  32 + spi_ipc_data_len(in), 0);
 		if (!data->curr_rx_net_buf) {
 			LOG_ERR("cannot allocate rx net buffer");
+			return;
 		}
 		stat = k_mem_slab_alloc(&spi_ipc_msg_slab,
 					(void **)&data->curr_rx_spi_msg, 0);
@@ -389,18 +466,16 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		data->curr_rx_spi_msg->netbuf = data->curr_rx_net_buf;
 		data->curr_rx_spi_msg->reply = NULL;
 		data->curr_rx_spi_msg->data_len = spi_ipc_data_len(in);
-	}
-	if (data->n_discard_subframes) {
-		/* Discarding input subframes (error or unsupported proto) */
-		if (data->n_discard_subframes == data->input_index) {
-			return;
-		}
-		data->n_discard_subframes = 0;
+		data->curr_rx_spi_msg->trans = spi_ipc_transaction(in);
+		LOG_DBG("transaction = %u, data_len = %u\n",
+			data->curr_rx_spi_msg->trans,
+			data->curr_rx_spi_msg->data_len);
 	}
 	tot_msg_len = data->curr_rx_spi_msg->data_len + sizeof(union spi_thb);
 	l =  tot_msg_len - net_buf_frags_len(data->curr_rx_net_buf);
 	if (l > sizeof(union spi_thb))
 		l = sizeof(union spi_thb);
+	LOG_DBG("tot msg len = %d", tot_msg_len);
 	net_buf_add_mem(data->curr_rx_net_buf, in, l);
 	if (net_buf_frags_len(data->curr_rx_net_buf) >= tot_msg_len) {
 		request = _find_matching_request(data);
@@ -409,6 +484,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		if (request) {
 			/* Input message is a reply */
 			request->reply = data->curr_rx_spi_msg;
+			LOG_DBG("frame is a reply, invoking reply cb\n");
 			if (request->reply_cb)
 				request->reply_cb(data->curr_rx_net_buf,
 						  request->cb_arg);
@@ -416,13 +492,17 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 			 * Remove related request from outstanding list,
 			 * if this is the last reply
 			 */
-			if (data->curr_rx_spi_msg->flags_error & LAST_REPLY)
+			if (data->curr_rx_spi_msg->flags_error & LAST_REPLY) {
+				LOG_DBG("last reply for request");
 				sys_dlist_remove(&request->list);
-		} else
+			}
+		} else {
+			LOG_DBG("request/notification received");
 			data->curr_rx_proto->rx_cb(data->curr_rx_proto,
 						   data,
 						   data->curr_rx_net_buf,
 						   data->curr_rx_proto_data);
+		}
 		/*
 		 * Rx cb should have referenced the net buffer if
 		 * interested
@@ -431,7 +511,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		data->curr_rx_net_buf = NULL;
 		k_mem_slab_free(&spi_ipc_msg_slab,
 				(void **)&data->curr_rx_spi_msg);
-		data->curr_tx_spi_msg = NULL;
+		data->curr_rx_spi_msg = NULL;
 	}
 }
 
@@ -467,19 +547,50 @@ static void check_dev(struct device *dev)
 	k_sem_give(&data->sem);
 }
 
+/* Returns timeout of first request to expire */
+static s32_t get_dev_first_req_to(struct device *dev)
+{
+	struct spi_ipc_data *data = dev->driver_data;
+	struct spi_msg *m =
+		SYS_DLIST_PEEK_HEAD_CONTAINER(&data->outstanding, m, list);
+
+	return m ? m->expiry : K_FOREVER;
+}
+
 /* SPI IPC thread */
 static void spi_ipc_main(void *arg)
 {
-	int i, stat;
+	int i, stat, ndevs;
+	s32_t next_timeout = K_FOREVER, to;
 
 	while (1) {
-		for (i = 0; i < ARRAY_SIZE(active_devices); i++) {
-			if (active_devices[i]) {
-				setup_dev(active_devices[i]);
+		struct device *dev_with_request_to;
+
+		for (i = 0, ndevs = 0; i < ARRAY_SIZE(active_devices); i++) {
+			struct device *d = active_devices[i];
+
+			if (d) {
+				setup_dev(d);
+				to = get_dev_first_req_to(d);
+				if (to < next_timeout) {
+					next_timeout = to;
+					dev_with_request_to = d;
+				}
+				ndevs++;
 			}
 		}
+		if (!ndevs) {
+			k_sleep(K_MSEC(1000));
+			continue;
+		}
 
-		stat = k_poll(events, ARRAY_SIZE(active_devices), K_FOREVER);
+		LOG_ERR("%s: entering k_poll\n", __func__);
+		stat = k_poll(events, ARRAY_SIZE(events), next_timeout);
+		LOG_ERR("%s: k_poll() returned %d\n", __func__, stat);
+
+		if (stat == -EAGAIN) {
+			/* Request timeout */
+		}
 
 		if (stat == -EINTR) {
 			/* FIXME: DO SOMETHING HERE ?? */
@@ -548,8 +659,13 @@ static int spi_ipc_submit_buf(struct device *dev,
 	msg->proto_code = header.hdr.proto_code;
 	msg->reply_cb = reply_cb;
 	msg->cb_arg = cb_arg;
+	msg->expiry = K_FOREVER;
 	/* net buf user data array contains pointer to relevant spi message */
 	BUILD_ASSERT(sizeof(msg) <= CONFIG_NET_BUF_USER_DATA_SIZE);
+
+	memcpy(outgoing->user_data, &msg, sizeof(msg));
+
+	net_buf_ref(outgoing);
 
 	/* Enqueue buffer */
 	net_buf_put(&data->fifo, outgoing);
