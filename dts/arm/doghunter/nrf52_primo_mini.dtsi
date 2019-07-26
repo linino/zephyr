@@ -79,8 +79,8 @@
 	status = "ok";
 	compatible = "nordic,nrf-spis";
 	csn-pin = <12>;
-	mosi-pin = <41>;
-	miso-pin = <11>;
+	mosi-pin = <11>;
+	miso-pin = <41>;
 	sck-pin = <40>;
 
 	spi_ipc0: esp8266-primo@0 {
