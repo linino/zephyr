@@ -77,6 +77,7 @@
 */
 &spi0 {
 	status = "ok";
+	compatible = "nordic,nrf-spis";
 	csn-pin = <12>;
 	mosi-pin = <41>;
 	miso-pin = <11>;
