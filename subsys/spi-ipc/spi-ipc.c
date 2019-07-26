@@ -149,7 +149,7 @@ static struct k_thread spi_ipc_thread;
 
 struct k_poll_event events[EVTS_PER_DEV * N_SPI_IPC_DEVS];
 
-#define SPI_IPC_THREAD_STACK_SIZE 1024
+#define SPI_IPC_THREAD_STACK_SIZE 512
 K_THREAD_STACK_MEMBER(spi_ipc_thread_stack, SPI_IPC_THREAD_STACK_SIZE);
 
 struct device *active_devices[N_SPI_IPC_DEVS];
