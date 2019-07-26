@@ -586,9 +586,10 @@ static int spi_ipc_init(struct device *dev)
 	data->spi_output_bs.count = 1;
 
 	k_sem_init(&data->sem, 1, 1);
+	k_poll_signal_init(&data->spi_signal);
 
-	data->spi_config.operation = SPI_OP_MODE_SLAVE | SPI_WORD_SET(8) |
-		SPI_LOCK_ON;
+	data->spi_config.frequency = 1000000;
+	data->spi_config.operation = SPI_OP_MODE_SLAVE | SPI_WORD_SET(8);
 	data->spi_input_buf.len = 32;
 	data->spi_output_buf.len = 32;
 	data->spi_input_bs.buffers = &data->spi_input_buf;
@@ -612,6 +613,7 @@ static int spi_ipc_init(struct device *dev)
 	}
 	gpio_pin_configure(data->gpio_dev, cfg->gpio_pin_number,
 			   GPIO_DIR_OUT|cfg->gpio_pin_flags);
+	data->spi_config.cs = NULL;
 
 	/* Init outgoing requests queue */
 	k_fifo_init(&data->fifo);
@@ -622,6 +624,8 @@ static int spi_ipc_init(struct device *dev)
 	k_poll_event_init(&events[cfg->minor + 1],
 			  K_POLL_TYPE_IGNORE,
 			  K_POLL_MODE_NOTIFY_ONLY, &data->fifo);
+
+	active_devices[cfg->minor] = dev;
 
 	if (init_mgmt(dev, data) < 0)
 		LOG_ERR("spi-ipc (%s): low level mgmt init error\n",
@@ -649,7 +653,7 @@ u16_t spi_ipc_new_transaction(void)
 
 struct spi_ipc_data spi_ipc_data0;
 struct spi_ipc_config_data spi_ipc_config0 = {
-	.spi_dev_label = DT_SPI_IPC_0_LABEL,
+	.spi_dev_label = DT_NORDIC_NRF_SPIS_0_LABEL,
 	.gpio_dev_label = DT_SPI_IPC_0_POLL_REQUEST_GPIOS_CONTROLLER,
 	.gpio_pin_number = DT_SPI_IPC_0_POLL_REQUEST_GPIOS_PIN,
 	.gpio_pin_flags = DT_SPI_IPC_0_POLL_REQUEST_GPIOS_FLAGS,
