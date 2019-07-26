@@ -124,6 +124,7 @@ struct spi_ipc_data {
 #ifdef CONFIG_SPI_IPC_MGMT
 	struct spi_ipc_mgmt_data mgmt_data;
 #endif
+	int nopen;
 };
 
 static struct k_mem_slab spi_ipc_msg_slab;
@@ -481,10 +482,12 @@ static void spi_ipc_main(void *arg)
 static int spi_ipc_drv_open(struct device *dev, const struct spi_ipc_proto *p,
 			    void *proto_data)
 {
-	const struct spi_ipc_config_data *cfg = dev->config->config_info;
-	struct spi_ipc_data *data = dev->driver_data;
+	const struct spi_ipc_config_data *cfg;
+	struct spi_ipc_data *data;
 	int stat;
 
+	cfg = dev->config->config_info;
+	data = dev->driver_data;
 	k_sem_take(&data->sem, K_FOREVER);
 	if (_find_proto(data, p->proto_id, NULL)) {
 		k_sem_give(&data->sem);
@@ -497,13 +500,15 @@ static int spi_ipc_drv_open(struct device *dev, const struct spi_ipc_proto *p,
 		LOG_ERR("%s failed (%d)\n", __func__, stat);
 		return stat;
 	}
-	k_poll_event_init(&events[cfg->minor],
-			  K_POLL_TYPE_IGNORE,
-			  K_POLL_MODE_NOTIFY_ONLY, &data->spi_signal);
-	k_poll_event_init(&events[cfg->minor + 1],
-			  K_POLL_TYPE_IGNORE,
-			  K_POLL_MODE_NOTIFY_ONLY, &data->fifo);
-	init_mgmt_event(data, cfg->minor);
+	if (!data->nopen++) {
+		k_poll_event_init(&events[cfg->minor],
+				  K_POLL_TYPE_SIGNAL,
+				  K_POLL_MODE_NOTIFY_ONLY, &data->spi_signal);
+		k_poll_event_init(&events[cfg->minor + 1],
+				  K_POLL_TYPE_FIFO_DATA_AVAILABLE,
+				  K_POLL_MODE_NOTIFY_ONLY, &data->fifo);
+		init_mgmt_event(data, cfg->minor);
+	}
 	k_sem_give(&data->sem);
 	return 0;
 }
