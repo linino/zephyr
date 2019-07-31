@@ -538,7 +538,7 @@ static void spi_ipc_main(void *arg)
 			continue;
 		}
 
-		K_DEBUG("%s: entering K_POLL\n");
+		K_DEBUG("%s: entering K_POLL\n", __func__);
 		stat = k_poll(events, ARRAY_SIZE(events), K_FOREVER);
 		K_DEBUG("%s: k_poll() returned %d\n", __func__, stat);
 
