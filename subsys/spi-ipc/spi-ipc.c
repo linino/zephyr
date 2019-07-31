@@ -581,17 +581,18 @@ static void handle_to_requests(struct device *dev)
 	struct spi_msg *m =
 		SYS_DLIST_PEEK_HEAD_CONTAINER(&data->outstanding, m, list);
 
-	LOG_DBG("%s, message %p (0x%08x)", __func__, m, m->proto_code);
-	if (!m->reply) {
-		/*
-		 * No reply received within specified timeout, invoke reply
-		 * cb with NULL reply parameter
-		 */
-		LOG_DBG("%s: no reply, invoking reply_cb(NULL, ...)", __func__);
-		if (m->reply_cb)
-			m->reply_cb(NULL, m->cb_arg);
-	}
-	LOG_DBG("%s: freeing message and relevant netbuf", __func__);
+	K_DEBUG("%s, message %p (0x%08x)\n", __func__, m, m->proto_code);
+	if (m->reply)
+		return;
+	/*
+	 * No reply received within specified timeout, invoke reply
+	 * cb with NULL reply parameter
+	 */
+	K_DEBUG("%s: no reply, invoking reply_cb(NULL, ...)\n",
+		__func__);
+	if (m->reply_cb)
+		m->reply_cb(NULL, m->cb_arg);
+	printk("%s: freeing message and relevant netbuf\n", __func__);
 	remove_outstanding_request(&m);
 }
 
