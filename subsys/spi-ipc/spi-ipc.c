@@ -356,31 +356,6 @@ static void setup_dev(struct device *dev)
 		data->spi_output_buf.buf =
 		    &data->spi_output[data->output_index];
 		data->output_index = (data->output_index + 1) & 0x1;
-
-		if ((_l >= m->data_len + sizeof(union spi_thb))) {
-			/* Transmitting header */
-			union spi_thb *thb = data->spi_output;
-
-			LOG_DBG("message proto/type = %d/%d\n",
-				spi_ipc_proto(thb), spi_ipc_code(thb));
-
-			if (spi_ipc_is_request(thb)) {
-				LOG_DBG("message is a request, appending to list of outstanding requests");
-				/*
-				 * If message is a request, append it
-				 * to the list of outstanding requests
-				 */
-				sys_dlist_insert_at(&data->outstanding,
-						    &m->list,
-						    check_req_timeout,
-						    m);
-				/*
-				 * Buffer will be unreferenced after tx, keep
-				 * a reference to it
-				 */
-				net_buf_ref(data->curr_tx_net_buf);
-			}
-		}
 		if (_l <= sizeof(union spi_thb)) {
 			/* Last tx for this message All done */
 			net_buf_unref(data->curr_tx_net_buf);
@@ -718,6 +693,27 @@ static int spi_ipc_submit_buf(struct device *dev,
 	msg->reply_cb = reply_cb;
 	msg->cb_arg = cb_arg;
 	msg->expiry = expiry;
+	LOG_DBG("new msg (0x%08x) = %p\n", msg->proto_code, msg);
+
+	if (msg->proto_code & SPI_IPC_REQUEST) {
+		LOG_DBG("%s %d, appending request %p (0x%08x)\n",
+		       __func__, __LINE__, msg, msg->proto_code);
+		LOG_DBG("message %p is a request, appending to list of outstanding requests\n", msg);
+		/*
+		 * If message is a request, append it
+		 * to the list of outstanding requests
+		 */
+		sys_dlist_insert_at(&data->outstanding,
+				    &msg->list,
+				    check_req_timeout,
+				    msg);
+		/*
+		 * Buffer will be unreferenced after tx, keep
+		 * a reference to it
+		 */
+		net_buf_ref(outgoing);
+	}
+
 	/* net buf user data array contains pointer to relevant spi message */
 	BUILD_ASSERT(sizeof(msg) <= CONFIG_NET_BUF_USER_DATA_SIZE);
 
