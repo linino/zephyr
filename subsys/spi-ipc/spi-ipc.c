@@ -312,6 +312,7 @@ static void setup_dev(struct device *dev)
 			printk("%s %d, no data in buffer\n", __func__,
 				__LINE__);
 			net_buf_unref(data->curr_tx_net_buf);
+			k_sem_give(&data->sem);
 			return;
 		}
 		memset(data->spi_output[data->output_index].data, 0,
