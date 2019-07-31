@@ -76,12 +76,12 @@ struct spi_msg {
 	void *cb_arg;
 	/* Expiry time (requests, K_FOREVER means forever) */
 	s32_t expiry;
-	/* Semaphore for accessing the outstanding requests list */
-	struct k_sem *outstanding_list_sem;
 	/* Used to link to outstanding messages (requests) */
 	sys_dnode_t list;
 	/* Delayed work for new timeout management */
 	struct k_delayed_work to_work;
+	/* Signal used for request timeout */
+	struct k_poll_signal *timeout_signal;
 };
 
 struct spi_ipc_config_data {
@@ -110,6 +110,7 @@ struct spi_ipc_data {
 	int output_index;
 	struct k_sem sem;
 	struct k_poll_signal spi_signal;
+	struct k_poll_signal timeout_signal;
 	union spi_thb spi_input[2];
 	union spi_thb spi_output[2];
 	struct spi_buf spi_input_buf;
@@ -146,10 +147,10 @@ static struct k_thread spi_ipc_thread;
 
 #ifdef CONFIG_SPI_IPC_MGMT
 /* spi done signal, fifo ready, mgmt event */
-#define EVTS_PER_DEV 3
+#define EVTS_PER_DEV 4
 #else
 /* spi done signal, fifo ready */
-#define EVTS_PER_DEV 2
+#define EVTS_PER_DEV 3
 #endif
 
 struct k_poll_event events[EVTS_PER_DEV * N_SPI_IPC_DEVS];
@@ -167,7 +168,7 @@ static int init_mgmt(struct device *dev, struct spi_ipc_data *data)
 
 static void init_mgmt_event(struct spi_ipc_data *data, int minor)
 {
-	k_poll_event_init(&events[minor + 2],
+	k_poll_event_init(&events[minor + 3],
 			  K_POLL_TYPE_IGNORE,
 			  K_POLL_MODE_NOTIFY_ONLY,
 			  &data->mgmt_data.diag_signal);
@@ -357,20 +358,12 @@ struct spi_ipc_mgmt_data *spi_ipc_get_mgmt_data(struct spi_ipc_data *data)
 }
 #endif
 
-static int remove_outstanding_request(struct spi_msg **_request,
-				      int sem_timeout)
+static int remove_outstanding_request(struct spi_msg **_request)
 {
 	struct spi_msg *request = *_request;
 	int ret = 0;
 
-	ret = k_sem_take(request->outstanding_list_sem, sem_timeout);
-	if (ret) {
-		K_DEBUG("%s: couldn't take list semaphore\n", __func__);
-		return ret;
-	}
 	sys_dlist_remove(&request->list);
-	k_sem_give(request->outstanding_list_sem);
-	
 	printk("%s: net_buf_unref(%p)\n", __func__, request->netbuf);
 	net_buf_unref(request->netbuf);
 	k_mem_slab_free(&spi_ipc_msg_slab, (void **)_request);
@@ -461,7 +454,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 			if (data->curr_rx_spi_msg &&
 			    (data->curr_rx_spi_msg->flags_error & LAST_REPLY)) {
 				K_DEBUG("last reply for request\n");
-				remove_outstanding_request(&request, K_FOREVER);
+				remove_outstanding_request(&request);
 			}
 		} else {
 			K_DEBUG("request/notification received\n");
@@ -487,6 +480,11 @@ static void check_dev(struct device *dev)
 	const struct spi_ipc_config_data *cfg = dev->config->config_info;
 	struct spi_ipc_data *data = dev->driver_data;
 	int spi_done, result;
+	int timeout_happened;
+	union {
+		int dummy;
+		struct spi_msg *request;
+	} to_result;
 
 	k_sem_take(&data->sem, K_FOREVER);
 	k_poll_signal_check(&data->spi_signal, &spi_done, &result);
@@ -501,6 +499,16 @@ static void check_dev(struct device *dev)
 		K_DEBUG("%s %d, input buf = %p\n", __func__, __LINE__,
 			data->spi_input_buf.buf);
 		spi_ipc_handle_input(data, data->spi_input_buf.buf);
+	}
+	k_poll_signal_check(&data->timeout_signal, &timeout_happened,
+			    &to_result.dummy);
+	if (timeout_happened) {
+		/* Timeout on request */
+		k_poll_signal_reset(&data->timeout_signal);
+		if (to_result.request->reply_cb)
+			to_result.request->reply_cb(NULL,
+						    to_result.request->cb_arg);
+		remove_outstanding_request(&to_result.request);
 	}
 	if (events[cfg->minor + 1].state == K_POLL_STATE_FIFO_DATA_AVAILABLE) {
 		/* Something available in output queue */
@@ -590,6 +598,10 @@ static int spi_ipc_drv_open(struct device *dev, const struct spi_ipc_proto *p,
 		k_poll_event_init(&events[cfg->minor + 1],
 				  K_POLL_TYPE_FIFO_DATA_AVAILABLE,
 				  K_POLL_MODE_NOTIFY_ONLY, &data->fifo);
+		k_poll_event_init(&events[cfg->minor + 2],
+				  K_POLL_TYPE_SIGNAL,
+				  K_POLL_MODE_NOTIFY_ONLY,
+				  &data->timeout_signal);
 		init_mgmt_event(data, cfg->minor);
 	}
 	k_sem_give(&data->sem);
@@ -599,18 +611,8 @@ static int spi_ipc_drv_open(struct device *dev, const struct spi_ipc_proto *p,
 static void request_timeout(struct k_work *work)
 {
 	struct spi_msg *request = CONTAINER_OF(work, struct spi_msg, to_work);
-	int stat;
 
-	if (request->reply_cb)
-		request->reply_cb(NULL, request->cb_arg);
-
-	stat = remove_outstanding_request(&request, 0);
-	if (stat < 0) {
-		K_DEBUG("could not remove request\n");
-		request->reply_cb = NULL;
-		/* Retry in a second */
-		k_delayed_work_submit(&request->to_work, 1000);
-	}
+	k_poll_signal_raise(request->timeout_signal, (int)request);
 }
 
 static int spi_ipc_submit_buf(struct device *dev,
@@ -639,7 +641,7 @@ static int spi_ipc_submit_buf(struct device *dev,
 	msg->reply_cb = reply_cb;
 	msg->cb_arg = cb_arg;
 	msg->expiry = expiry;
-	msg->outstanding_list_sem = &data->sem;
+	msg->timeout_signal = &data->timeout_signal;
 	K_DEBUG("new msg (0x%08x) = %p\n", msg->proto_code, msg);
 
 	if (msg->proto_code & SPI_IPC_REQUEST) {
