@@ -583,15 +583,16 @@ static void handle_to_requests(struct device *dev)
 /* SPI IPC thread */
 static void spi_ipc_main(void *arg)
 {
-	int i, stat, ndevs;
-	s32_t next_timeout = K_FOREVER, to;
+	int i, stat, ndevs, dont_setup = 0;
+	s32_t next_timeout, to;
 	s64_t poll_start;
 	u32_t delta;
 
 	while (1) {
-		struct device *dev_with_request_to;
+		struct device *dev_with_request_to = NULL;
 
-		for (i = 0, ndevs = 0; i < ARRAY_SIZE(active_devices); i++) {
+		for (i = 0, ndevs = 0, to = K_FOREVER, next_timeout = K_FOREVER;
+		     i < ARRAY_SIZE(active_devices) && !dont_setup; i++) {
 			struct device *d = active_devices[i];
 
 			if (d) {
@@ -605,7 +606,8 @@ static void spi_ipc_main(void *arg)
 				ndevs++;
 			}
 		}
-		if (!ndevs) {
+		if (!ndevs && !dont_setup) {
+			LOG_DBG("NO ACTIVE DEVICES");
 			k_sleep(K_MSEC(1000));
 			continue;
 		}
@@ -624,18 +626,29 @@ static void spi_ipc_main(void *arg)
 
 		if (stat == -EAGAIN) {
 			/* Request timeout */
-			handle_to_requests(dev_with_request_to);
+			LOG_DBG("TIMEOUT  !!!\n");
+			dont_setup = 1;
+			if (dev_with_request_to)
+				handle_to_requests(dev_with_request_to);
 			continue;
 		}
-
+		dont_setup = 0;
 		/* No timeout, update next */
-		update_dev_first_timeout(dev_with_request_to, delta);
+		if (dev_with_request_to) {
+			LOG_DBG("UPDATING FIRST TIMEOUT");
+			update_dev_first_timeout(dev_with_request_to, delta);
+			LOG_DBG("FIRST TIMEOUT UPDATED");
+		}
 
 		for (i = 0; i < ARRAY_SIZE(active_devices); i++) {
 			if (active_devices[i]) {
+				LOG_DBG("Invoking check_dev() (%p)",
+					active_devices[i]);
 				check_dev(active_devices[i]);
+				LOG_DBG("check_dev() done");
 			}
 		}
+		dont_setup = 0;
 	}
 }
 
