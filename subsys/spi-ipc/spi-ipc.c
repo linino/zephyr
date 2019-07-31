@@ -181,7 +181,7 @@ static inline int _check_mgmt_evt(struct spi_ipc_data *data, int *result)
 
 	k_poll_signal_check(&data->mgmt_data.diag_signal, &got_signal, result);
 	if (got_signal)
-		k_poll_signal_reset(&data->spi_signal);
+		k_poll_signal_reset(&data->mgmt_data.diag_signal);
 	return got_signal;
 }
 #else /* !CONFIG_SPI_IPC_MGMT */
