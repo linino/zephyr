@@ -263,7 +263,7 @@ static struct spi_msg *_find_matching_request(struct spi_ipc_data *data)
 	}
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&data->outstanding, r, list) {
-		LOG_DBG("%s: trying request %p, proto/code = 0x%04x, trans = %u",
+		LOG_DBG("%s: trying request %p, pr/code = 0x%08x, trans = %u",
 			__func__, r, r->proto_code, r->trans);
 		if ((r->proto_code & ~SPI_IPC_REQUEST) ==
 		    (m->proto_code & ~SPI_IPC_REQUEST) &&
@@ -372,8 +372,9 @@ static void setup_dev(struct device *dev)
 	data->input_index = (data->input_index + 1) & 0x1;
 	k_sem_give(&data->sem);
 
-	LOG_DBG("Transceiving: tx_bs = %p, buffers[0] = %p, buf = %p\n",
-		data->tx_bs, &data->tx_bs->buffers[0], data->tx_bs->buffers[0].buf);
+	LOG_DBG("Transceiving: tx_bs = %p, buffers[0] = %p, buf = %p",
+		data->tx_bs, &data->tx_bs->buffers[0],
+		data->tx_bs->buffers[0].buf);
 	stat = spi_transceive_async(data->spi_dev, &data->spi_config,
 				    data->tx_bs, &data->spi_input_bs,
 				    &data->spi_signal);
@@ -451,7 +452,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		data->curr_rx_spi_msg->reply = NULL;
 		data->curr_rx_spi_msg->data_len = spi_ipc_data_len(in);
 		data->curr_rx_spi_msg->trans = spi_ipc_transaction(in);
-		LOG_DBG("transaction = %u, data_len = %u\n",
+		LOG_DBG("transaction = %u, data_len = %u",
 			data->curr_rx_spi_msg->trans,
 			data->curr_rx_spi_msg->data_len);
 	}
@@ -459,16 +460,20 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 	l =  tot_msg_len - net_buf_frags_len(data->curr_rx_net_buf);
 	if (l > sizeof(union spi_thb))
 		l = sizeof(union spi_thb);
-	LOG_DBG("tot msg len = %d", tot_msg_len);
+	LOG_DBG("tot msg len = %d, adding %d", tot_msg_len, l);
+	LOG_DBG("in = 0x%08x", *(uint32_t *)in);
 	net_buf_add_mem(data->curr_rx_net_buf, in, l);
+	LOG_DBG("received length = %d",
+		net_buf_frags_len(data->curr_rx_net_buf));
 	if (net_buf_frags_len(data->curr_rx_net_buf) >= tot_msg_len) {
 		request = _find_matching_request(data);
 		LOG_DBG("%s: frame received, matching request = %p", __func__,
-			request);
+		       request);
 		if (request) {
 			/* Input message is a reply */
 			request->reply = data->curr_rx_spi_msg;
-			LOG_DBG("frame is a reply, invoking reply cb\n");
+			LOG_DBG("frame is a reply, invoking reply cb %p",
+			       request->reply_cb);
 			if (request->reply_cb)
 				request->reply_cb(data->curr_rx_net_buf,
 						  request->cb_arg);
@@ -508,12 +513,16 @@ static void check_dev(struct device *dev)
 
 	k_sem_take(&data->sem, K_FOREVER);
 	k_poll_signal_check(&data->spi_signal, &spi_done, &result);
+	LOG_DBG("k_poll_signal_check(): signal = %u, result = %d",
+		spi_done, result);
 	if (spi_done) {
 		/* Spi slave transaction done */
 		k_poll_signal_reset(&data->spi_signal);
 		/* Reset transfer request */
 		spi_ipc_reset_spi_xfer_request(data, cfg);
 		/* Handle input buffer */
+		LOG_DBG("%s %d, input buf = %p", __func__, __LINE__,
+			data->spi_input_buf.buf);
 		spi_ipc_handle_input(data, data->spi_input_buf.buf);
 	}
 	if (events[cfg->minor + 1].state == K_POLL_STATE_FIFO_DATA_AVAILABLE) {
@@ -539,6 +548,11 @@ static s32_t get_dev_first_req_to(struct device *dev)
 	struct spi_msg *m =
 		SYS_DLIST_PEEK_HEAD_CONTAINER(&data->outstanding, m, list);
 
+	LOG_DBG("%s: timeout = %d", __func__, m ? m->expiry : K_FOREVER);
+	if (m && !m->expiry)
+		LOG_DBG("%s: timeout is 0 (p/c 0x%08x)!!", __func__,
+		       m->proto_code);
+
 	return m ? m->expiry : K_FOREVER;
 }
 
@@ -557,7 +571,8 @@ static void update_dev_first_timeout(struct device *dev, u32_t delta)
 		LOG_ERR("%s: new timeout is < 0 !!", __func__);
 		m->expiry = 0;
 	}
-	LOG_DBG("%s: new timeout = %d", __func__, m->expiry);
+	LOG_DBG("%s: msg %p (0x%08x), new timeout = %d", __func__, m,
+		m->proto_code, m->expiry);
 }
 
 static void handle_to_requests(struct device *dev)
@@ -566,7 +581,7 @@ static void handle_to_requests(struct device *dev)
 	struct spi_msg *m =
 		SYS_DLIST_PEEK_HEAD_CONTAINER(&data->outstanding, m, list);
 
-	LOG_DBG("%s, message %p", __func__, m);
+	LOG_DBG("%s, message %p (0x%08x)", __func__, m, m->proto_code);
 	if (!m->reply) {
 		/*
 		 * No reply received within specified timeout, invoke reply
@@ -612,12 +627,13 @@ static void spi_ipc_main(void *arg)
 			continue;
 		}
 
-		LOG_ERR("%s: entering k_poll, next_timeout = %d\n", __func__,
-			next_timeout);
 		poll_start = k_uptime_get();
+		LOG_DBG("%s: entering k_poll, now = %llu, next_timeout = %d",
+			__func__, poll_start, next_timeout);
 		stat = k_poll(events, ARRAY_SIZE(events), next_timeout);
 		delta = k_uptime_delta_32(&poll_start);
-		LOG_ERR("%s: k_poll() returned %d\n", __func__, stat);
+		LOG_DBG("%s: k_poll() returned %d, delta = %u", __func__,
+		       stat, delta);
 
 		if (stat == -EINTR) {
 			/* FIXME: DO SOMETHING HERE ?? */
