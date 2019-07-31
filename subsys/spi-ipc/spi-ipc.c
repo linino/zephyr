@@ -476,7 +476,8 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 			 * Remove related request from outstanding list,
 			 * if this is the last reply
 			 */
-			if (data->curr_rx_spi_msg->flags_error & LAST_REPLY) {
+			if (data->curr_rx_spi_msg &&
+			    (data->curr_rx_spi_msg->flags_error & LAST_REPLY)) {
 				LOG_DBG("last reply for request");
 				remove_outstanding_request(&request);
 			}
