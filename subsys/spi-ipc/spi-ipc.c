@@ -71,15 +71,17 @@ struct spi_msg {
 	u32_t proto_code;
 	/* Pointer to related actual message */
 	struct net_buf *netbuf;
-	/* Pointer to relevant reply (if any) */
-	struct spi_msg *reply;
 	/* Callback pointer and relevant arg */
 	buf_reply_cb reply_cb;
 	void *cb_arg;
 	/* Expiry time (requests, K_FOREVER means forever) */
 	s32_t expiry;
+	/* Semaphore for accessing the outstanding requests list */
+	struct k_sem *outstanding_list_sem;
 	/* Used to link to outstanding messages (requests) */
 	sys_dnode_t list;
+	/* Delayed work for new timeout management */
+	struct k_delayed_work to_work;
 };
 
 struct spi_ipc_config_data {
@@ -354,13 +356,24 @@ struct spi_ipc_mgmt_data *spi_ipc_get_mgmt_data(struct spi_ipc_data *data)
 }
 #endif
 
-static void remove_outstanding_request(struct spi_msg **_request)
+static int remove_outstanding_request(struct spi_msg **_request,
+				      int sem_timeout)
 {
 	struct spi_msg *request = *_request;
+	int ret = 0;
 
+	ret = k_sem_take(request->outstanding_list_sem, sem_timeout);
+	if (ret) {
+		K_DEBUG("%s: couldn't take list semaphore\n", __func__);
+		return ret;
+	}
 	sys_dlist_remove(&request->list);
+	k_sem_give(request->outstanding_list_sem);
+	
+	printk("%s: net_buf_unref(%p)\n", __func__, request->netbuf);
 	net_buf_unref(request->netbuf);
 	k_mem_slab_free(&spi_ipc_msg_slab, (void **)_request);
+	return ret;
 }
 
 static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
@@ -412,7 +425,6 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		data->curr_rx_spi_msg->flags_error = in->hdr.flags_error;
 		data->curr_rx_spi_msg->proto_code = in->hdr.proto_code;
 		data->curr_rx_spi_msg->netbuf = data->curr_rx_net_buf;
-		data->curr_rx_spi_msg->reply = NULL;
 		data->curr_rx_spi_msg->data_len = spi_ipc_data_len(in);
 		data->curr_rx_spi_msg->trans = spi_ipc_transaction(in);
 		K_DEBUG("transaction = %u, data_len = %u\n",
@@ -434,9 +446,10 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		       request);
 		if (request) {
 			/* Input message is a reply */
-			request->reply = data->curr_rx_spi_msg;
 			K_DEBUG("frame is a reply, invoking reply cb %p\n",
 			       request->reply_cb);
+			/* Cancel timeout */
+			k_delayed_work_cancel(&request->to_work);
 			if (request->reply_cb)
 				request->reply_cb(data->curr_rx_net_buf,
 						  request->cb_arg);
@@ -447,7 +460,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 			if (data->curr_rx_spi_msg &&
 			    (data->curr_rx_spi_msg->flags_error & LAST_REPLY)) {
 				K_DEBUG("last reply for request\n");
-				remove_outstanding_request(&request);
+				remove_outstanding_request(&request, K_FOREVER);
 			}
 		} else {
 			K_DEBUG("request/notification received\n");
@@ -582,6 +595,23 @@ static int spi_ipc_drv_open(struct device *dev, const struct spi_ipc_proto *p,
 	return 0;
 }
 
+static void request_timeout(struct k_work *work)
+{
+	struct spi_msg *request = CONTAINER_OF(work, struct spi_msg, to_work);
+	int stat;
+
+	if (request->reply_cb)
+		request->reply_cb(NULL, request->cb_arg);
+
+	stat = remove_outstanding_request(&request, 0);
+	if (stat < 0) {
+		K_DEBUG("could not remove request\n");
+		request->reply_cb = NULL;
+		/* Retry in a second */
+		k_delayed_work_submit(&request->to_work, 1000);
+	}
+}
+
 static int spi_ipc_submit_buf(struct device *dev,
 			      struct net_buf *outgoing,
 			      buf_reply_cb reply_cb, void *cb_arg, s32_t expiry)
@@ -591,6 +621,11 @@ static int spi_ipc_submit_buf(struct device *dev,
 	union spi_thb header;
 	struct spi_msg *msg;
 
+	if (!expiry) {
+		printk("%s: warning, expiry is 0, invalid\n", __func__);
+		return -EINVAL;
+	}
+
 	stat = k_mem_slab_alloc(&spi_ipc_msg_slab, (void **)&msg, 1000);
 	if (stat < 0) {
 		return stat;
@@ -598,29 +633,37 @@ static int spi_ipc_submit_buf(struct device *dev,
 	net_buf_linearize(&header, sizeof(header), outgoing, 0, sizeof(header));
 	msg->flags_error = (u16_t)(-ETIMEDOUT);
 	msg->data_len = spi_ipc_data_len(&header);
-	msg->reply = NULL;
 	msg->netbuf = outgoing;
 	msg->proto_code = header.hdr.proto_code;
 	msg->reply_cb = reply_cb;
 	msg->cb_arg = cb_arg;
 	msg->expiry = expiry;
+	msg->outstanding_list_sem = &data->sem;
 	K_DEBUG("new msg (0x%08x) = %p\n", msg->proto_code, msg);
 
 	if (msg->proto_code & SPI_IPC_REQUEST) {
 		K_DEBUG("%s %d, appending request %p (0x%08x)\n",
 		       __func__, __LINE__, msg, msg->proto_code);
 		K_DEBUG("message %p is a request, appending to list of outstanding requests\n", msg);
+		k_sem_take(&data->sem, K_FOREVER);
 		/*
 		 * If message is a request, append it
 		 * to the list of outstanding requests
 		 */
 		sys_dlist_append(&data->outstanding,
 				 &msg->list);
+		k_sem_give(&data->sem);
 		/*
 		 * Buffer will be unreferenced after tx, keep
 		 * a reference to it
 		 */
 		net_buf_ref(outgoing);
+
+		if (expiry > 0) {
+			/* Setup timeout, 0 timeout not accepted */
+			k_delayed_work_init(&msg->to_work, request_timeout);
+			k_delayed_work_submit(&msg->to_work, expiry);
+		}
 	}
 
 	/* net buf user data array contains pointer to relevant spi message */
