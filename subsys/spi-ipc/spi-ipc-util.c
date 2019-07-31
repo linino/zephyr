@@ -28,9 +28,9 @@ static void reply_cb(struct net_buf *reply, void *cb_arg)
 		return;
 	}
 	if (!reply) {
-		LOG_ERR("%s: NO REPLY: timeout !!\n", __func__);
-	} else
-		  stdata->reply = reply;
+		printk("%s: NO REPLY: timeout !!\n", __func__);
+	}
+	stdata->reply = reply;
 	k_sem_give(&stdata->s);
 }
 
@@ -62,7 +62,11 @@ int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 		goto end0;
 	}
 	if (k_sem_take(&stdata.s, K_FOREVER)) {
-		LOG_ERR("%s: timeout\n", __func__);
+		printk("%s: timeout\n", __func__);
+		goto end0;
+	}
+	if (!stdata.reply) {
+		ret = -ETIMEDOUT;
 		goto end0;
 	}
 	net_buf_linearize(&b.hdr, sizeof(b.hdr), stdata.reply, 0,
