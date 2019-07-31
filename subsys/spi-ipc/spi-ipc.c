@@ -80,8 +80,12 @@ struct spi_msg {
 	sys_dnode_t list;
 	/* Delayed work for new timeout management */
 	struct k_delayed_work to_work;
-	/* Signal used for request timeout */
-	struct k_poll_signal *timeout_signal;
+	/* Signal used for request removal */
+	struct k_poll_signal *removal_signal;
+	/* Atomic flags */
+#define REQ_DONE 0
+#define REQ_TIMEDOUT 1	
+	atomic_val_t aflags;
 };
 
 struct spi_ipc_config_data {
@@ -110,7 +114,7 @@ struct spi_ipc_data {
 	int output_index;
 	struct k_sem sem;
 	struct k_poll_signal spi_signal;
-	struct k_poll_signal timeout_signal;
+	struct k_poll_signal removal_signal;
 	union spi_thb spi_input[2];
 	union spi_thb spi_output[2];
 	struct spi_buf spi_input_buf;
@@ -448,13 +452,17 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 				request->reply_cb(data->curr_rx_net_buf,
 						  request->cb_arg);
 			/*
-			 * Remove related request from outstanding list,
+			 * Schedule related request for removal from
+			 * outstanding list and total distruction,
 			 * if this is the last reply
 			 */
 			if (data->curr_rx_spi_msg &&
 			    (data->curr_rx_spi_msg->flags_error & LAST_REPLY)) {
 				K_DEBUG("last reply for request\n");
-				remove_outstanding_request(&request);
+				if (!(atomic_test_and_set_bit(&request->aflags,
+							      REQ_DONE)))
+					k_poll_signal_raise(request->timeout_signal,
+							    (int)request);
 			}
 		} else {
 			K_DEBUG("request/notification received\n");
@@ -475,7 +483,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 	}
 }
 
-static void check_dev(struct device *dev)
+static int check_dev(struct device *dev)
 {
 	const struct spi_ipc_config_data *cfg = dev->config->config_info;
 	struct spi_ipc_data *data = dev->driver_data;
@@ -485,10 +493,11 @@ static void check_dev(struct device *dev)
 		int dummy;
 		struct spi_msg *request;
 	} to_result;
+	int ret = 0;
 
 	k_sem_take(&data->sem, K_FOREVER);
 	k_poll_signal_check(&data->spi_signal, &spi_done, &result);
-	K_DEBUG("k_poll_signal_check(): signal = %u, result = %d\n",
+	K_DEBUG("k_poll_signal_check(): spi_done = %u, result = %d\n",
 		spi_done, result);
 	if (spi_done) {
 		/* Spi slave transaction done */
@@ -499,22 +508,29 @@ static void check_dev(struct device *dev)
 		K_DEBUG("%s %d, input buf = %p\n", __func__, __LINE__,
 			data->spi_input_buf.buf);
 		spi_ipc_handle_input(data, data->spi_input_buf.buf);
+		ret = 1;
 	}
-	k_poll_signal_check(&data->timeout_signal, &timeout_happened,
+	k_poll_signal_check(&data->removal_signal, &timeout_happened,
 			    &to_result.dummy);
+	K_DEBUG("k_poll_signal_check(): removal = %u, result = %d\n",
+		timeout_happened, result);
 	if (timeout_happened) {
 		/* Timeout on request */
-		k_poll_signal_reset(&data->timeout_signal);
-		if (to_result.request->reply_cb)
-			to_result.request->reply_cb(NULL,
-						    to_result.request->cb_arg);
-		remove_outstanding_request(&to_result.request);
+		struct spi_msg *req = to_result.request;
+
+		K_DEBUG("Removing request %p\n", req);
+		k_poll_signal_reset(&data->removal_signal);
+		if (req->reply_cb && atomic_test_bit(&req->aflags,
+						     REQ_TIMEDOUT))
+			req->reply_cb(NULL, req->cb_arg);
+		remove_outstanding_request(&req);
 	}
 	if (events[cfg->minor + 1].state == K_POLL_STATE_FIFO_DATA_AVAILABLE) {
 		/* Something available in output queue */
 		if (!spi_done)
 			spi_release(data->spi_dev, &data->spi_config);
 		/* ANYTHING MORE TO DO HERE ? */
+		ret = 1;
 	}
 	if (_check_mgmt_evt(data, &result)) {
 		if (result) {
@@ -524,19 +540,21 @@ static void check_dev(struct device *dev)
 		}
 	}
 	k_sem_give(&data->sem);
+	return ret;
 }
 
 /* SPI IPC thread */
 static void spi_ipc_main(void *arg)
 {
-	int i, stat, ndevs;
+	int i, stat, ndevs, do_setup = 1;
 
 	while (1) {
 		for (i = 0, ndevs = 0; i < ARRAY_SIZE(active_devices); i++) {
 			struct device *d = active_devices[i];
 			
 			if (d) {
-				setup_dev(d);
+				if (do_setup)
+					setup_dev(d);
 				ndevs++;
 			}
 		}
@@ -563,7 +581,7 @@ static void spi_ipc_main(void *arg)
 			if (active_devices[i]) {
 				K_DEBUG("Invoking check_dev() (%p)\n",
 					active_devices[i]);
-				check_dev(active_devices[i]);
+				do_setup = check_dev(active_devices[i]);
 				K_DEBUG("check_dev() done\n");
 			}
 		}
@@ -601,7 +619,7 @@ static int spi_ipc_drv_open(struct device *dev, const struct spi_ipc_proto *p,
 		k_poll_event_init(&events[cfg->minor + 2],
 				  K_POLL_TYPE_SIGNAL,
 				  K_POLL_MODE_NOTIFY_ONLY,
-				  &data->timeout_signal);
+				  &data->removal_signal);
 		init_mgmt_event(data, cfg->minor);
 	}
 	k_sem_give(&data->sem);
@@ -612,7 +630,12 @@ static void request_timeout(struct k_work *work)
 {
 	struct spi_msg *request = CONTAINER_OF(work, struct spi_msg, to_work);
 
-	k_poll_signal_raise(request->timeout_signal, (int)request);
+	if (!(atomic_test_and_set_bit(&request->aflags, REQ_DONE)))
+		/* Request not done yet, schedule it for removal with timeout */
+		atomic_set_bit(&request->aflags, REQ_TIMEDOUT);
+	/* Otherwise just remove it */
+	K_DEBUG("%s: raising removal signal\n", __func__);
+	k_poll_signal_raise(request->removal_signal, (int)request);
 }
 
 static int spi_ipc_submit_buf(struct device *dev,
@@ -641,7 +664,8 @@ static int spi_ipc_submit_buf(struct device *dev,
 	msg->reply_cb = reply_cb;
 	msg->cb_arg = cb_arg;
 	msg->expiry = expiry;
-	msg->timeout_signal = &data->timeout_signal;
+	msg->removal_signal = &data->removal_signal;
+	atomic_set(&msg->aflags, 0);
 	K_DEBUG("new msg (0x%08x) = %p\n", msg->proto_code, msg);
 
 	if (msg->proto_code & SPI_IPC_REQUEST) {
@@ -726,6 +750,7 @@ static int spi_ipc_init(struct device *dev)
 
 	k_sem_init(&data->sem, 1, 1);
 	k_poll_signal_init(&data->spi_signal);
+	k_poll_signal_init(&data->removal_signal);
 
 	data->spi_config.frequency = 1000000;
 	data->spi_config.operation = SPI_OP_MODE_SLAVE | SPI_WORD_SET(8);
@@ -763,6 +788,8 @@ static int spi_ipc_init(struct device *dev)
 	k_poll_event_init(&events[cfg->minor + 1],
 			  K_POLL_TYPE_IGNORE,
 			  K_POLL_MODE_NOTIFY_ONLY, &data->fifo);
+	k_poll_event_init(&events[cfg->minor + 2], K_POLL_TYPE_IGNORE,
+			  K_POLL_MODE_NOTIFY_ONLY, &data->removal_signal);
 
 	active_devices[cfg->minor] = dev;
 
