@@ -597,7 +597,8 @@ static void spi_ipc_main(void *arg)
 			if (d) {
 				setup_dev(d);
 				to = get_dev_first_req_to(d);
-				if (to < next_timeout) {
+				if (((next_timeout < 0) && to >= 0) ||
+					to < next_timeout) {
 					next_timeout = to;
 					dev_with_request_to = d;
 				}
