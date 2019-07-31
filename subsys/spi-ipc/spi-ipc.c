@@ -338,7 +338,7 @@ static void setup_dev(struct device *dev)
 			       data->curr_tx_net_buf->user_data,
 			       sizeof(data->curr_tx_spi_msg));
 		}
-		m = data->curr_rx_spi_msg;
+		m = data->curr_tx_spi_msg;
 		_l = net_buf_frags_len(data->curr_tx_net_buf);
 		l = min(_l, sizeof(union spi_thb));
 		ptr = net_buf_pull_mem(data->curr_tx_net_buf, l);
