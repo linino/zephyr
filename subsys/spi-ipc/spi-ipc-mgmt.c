@@ -33,8 +33,8 @@ static void spi_ipc_mgmt_alive(struct k_timer *timer)
 	stat = spi_ipc_simple_trans(spi_ipc_dev, &spi_ipc_mgmt_pool, &b,
 				    NULL, NULL, 0);
 	if (stat < 0) {
-		LOG_ERR("%s: spi_ipc_simple_trans() returns error %d\n",
-			__func__, stat);
+		printk("%s: spi_ipc_simple_trans() returns error %d\n",
+		       __func__, stat);
 	}
 }
 
@@ -49,15 +49,15 @@ static void spi_ipc_mgmt_rx_cb(const struct spi_ipc_proto *proto,
 
 	stat = net_buf_linearize(&hdr, sizeof(hdr), buf, 0, sizeof(hdr));
 	if (stat != sizeof(hdr)) {
-		LOG_ERR("ERROR READING MGMT MESSAGE\n");
+		printk("ERROR READING MGMT MESSAGE\n");
 	}
 	if (spi_ipc_code(&hdr) != ALIVE) {
-		LOG_ERR("UNKNOWN MGMT MESSAGE\n");
+		printk("UNKNOWN MGMT MESSAGE\n");
 		err = -EINVAL;
 	} else
 		err = spi_ipc_error(&hdr);
-	LOG_ERR("%s: ALIVE received, trans# = %d, error = %d\n", __func__,
-		spi_ipc_transaction(&hdr), err);
+	printk("%s: ALIVE received, trans# = %d, error = %d\n", __func__,
+	       spi_ipc_transaction(&hdr), err);
 	k_poll_signal_raise(&md->diag_signal, err);
 }
 

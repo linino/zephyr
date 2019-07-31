@@ -32,7 +32,7 @@ static int spi_ipc_ether_get_mac(struct device *spi_ipc_dev, u8_t mac[6])
 	if (ret < 0)
 		return ret;
 	if (len != 6) {
-		LOG_ERR("%s: invalid reply length %d\n", __func__, len);
+		printk("%s: invalid reply length %d\n", __func__, len);
 		return -EINVAL;
 	}
 	return ret;
@@ -43,11 +43,11 @@ void spi_ipc_iface_init(struct device *spi_ipc_dev, struct net_if *iface)
 	u8_t mac[6];
 
 	if (spi_ipc_ether_get_mac(spi_ipc_dev, mac) < 0) {
-		LOG_ERR("could not read mac address");
+		printk("could not read mac address\n");
 		return;
 	}
 
-	LOG_DBG("MAC Address %02X:%02X:%02X:%02X:%02X:%02X",
+	K_DEBUG("MAC Address %02X:%02X:%02X:%02X:%02X:%02X\n",
 		mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
 	net_if_set_link_addr(iface, mac, sizeof(mac), NET_LINK_ETHERNET);
@@ -86,7 +86,7 @@ int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
 	spi_ipc_set_transaction(&thb, spi_ipc_new_transaction());
 	hdr = net_pkt_get_frag(pkt, 1000);
 	if (!hdr) {
-		LOG_ERR("%s: cannot allocate header fragment", __func__);
+		printk("%s: cannot allocate header fragment\n", __func__);
 		return -ENOMEM;
 	}
 	net_buf_add_mem(hdr, &thb, sizeof(thb));
@@ -111,7 +111,7 @@ static void spi_ipc_rx_cb(const struct spi_ipc_proto *proto,
 	struct net_if *iface = proto_data;
 
 	if (!pkt) {
-		LOG_ERR("%s: cannot allocate net packet\n", __func__);
+		printk("%s: cannot allocate net packet\n", __func__);
 		return;
 	}
 	/* Remove spi ipc header in front of packet */

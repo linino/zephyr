@@ -253,26 +253,26 @@ static struct spi_msg *_find_matching_request(struct spi_ipc_data *data)
 	struct spi_msg *m = data->curr_rx_spi_msg;
 	struct spi_msg *r;
 
-	LOG_DBG("%s entered, proto/code = 0x%04x, trans = %u", __func__,
+	K_DEBUG("%s entered, proto/code = 0x%04x, trans = %u\n", __func__,
 		m->proto_code, m->trans);
 
 	if (m->proto_code & SPI_IPC_REQUEST) {
 		/* Not a reply at all */
-		LOG_DBG("%s, message is not a reply", __func__);
+		K_DEBUG("%s, message is not a reply", __func__);
 		return NULL;
 	}
 
 	SYS_DLIST_FOR_EACH_CONTAINER(&data->outstanding, r, list) {
-		LOG_DBG("%s: trying request %p, pr/code = 0x%08x, trans = %u",
+		K_DEBUG("%s: trying request %p, pr/code = 0x%08x, trans = %u\n",
 			__func__, r, r->proto_code, r->trans);
 		if ((r->proto_code & ~SPI_IPC_REQUEST) ==
 		    (m->proto_code & ~SPI_IPC_REQUEST) &&
 		    r->trans == m->trans) {
-			LOG_DBG("%s: found request %p", __func__, r);
+			K_DEBUG("%s: found request %p\n", __func__, r);
 			return r;
 		}
 	}
-	LOG_DBG("%s: no request found", __func__);
+	K_DEBUG("%s: no request found\n", __func__);
 	return NULL;
 }
 
@@ -324,9 +324,9 @@ static void setup_dev(struct device *dev)
 	k_sem_take(&data->sem, K_FOREVER);
 	if (!data->curr_tx_net_buf) {
 		data->curr_tx_net_buf = net_buf_get(&data->fifo, 0);
-		LOG_DBG("%s: got buffer %p\n", __func__, data->curr_tx_net_buf);
+		K_DEBUG("%s: got buffer %p\n", __func__, data->curr_tx_net_buf);
 	}
-	LOG_DBG("%s %d, curr_tx_net_buf  = %p\n", __func__, __LINE__,
+	K_DEBUG("%s %d, curr_tx_net_buf  = %p\n", __func__, __LINE__,
 		data->curr_tx_net_buf);
 	if (data->curr_tx_net_buf) {
 		size_t l, _l;
@@ -344,7 +344,7 @@ static void setup_dev(struct device *dev)
 		ptr = net_buf_pull_mem(data->curr_tx_net_buf, l);
 
 		if (!ptr) {
-			LOG_ERR("%s %d, no data in buffer\n", __func__,
+			printk("%s %d, no data in buffer\n", __func__,
 				__LINE__);
 			net_buf_unref(data->curr_tx_net_buf);
 			return;
@@ -372,7 +372,7 @@ static void setup_dev(struct device *dev)
 	data->input_index = (data->input_index + 1) & 0x1;
 	k_sem_give(&data->sem);
 
-	LOG_DBG("Transceiving: tx_bs = %p, buffers[0] = %p, buf = %p",
+	K_DEBUG("Transceiving: tx_bs = %p, buffers[0] = %p, buf = %p\n",
 		data->tx_bs, &data->tx_bs->buffers[0],
 		data->tx_bs->buffers[0].buf);
 	stat = spi_transceive_async(data->spi_dev, &data->spi_config,
@@ -408,7 +408,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 	size_t l, tot_msg_len;
 
 	if (data->n_discard_subframes) {
-		LOG_DBG("%s: discarding frame, counter = %d",
+		K_DEBUG("%s: discarding frame, counter = %d\n",
 			__func__, data->n_discard_subframes);
 		/* Discarding input subframes (error or unsupported proto) */
 		data->n_discard_subframes--;
@@ -416,7 +416,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 	}
 	if (!data->curr_rx_net_buf) {
 		if (in->hdr.magic != SPI_IPC_MAGIC) {
-			LOG_DBG("%s: no spi magic (0x%08x)", __func__,
+			K_DEBUG("%s: no spi magic (0x%08x)\n", __func__,
 				in->hdr.magic);
 			return;
 		}
@@ -424,23 +424,23 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		data->curr_rx_proto = _find_proto(data, spi_ipc_proto(in),
 						  &data->curr_rx_proto_data);
 		if (!data->curr_rx_proto) {
-			LOG_DBG("Unsupported protocol 0x%04x, discarding frame", spi_ipc_proto(in));
+			K_DEBUG("Unsupported protocol 0x%04x, discarding frame\n", spi_ipc_proto(in));
 			data->n_discard_subframes = spi_ipc_data_subframes(in);
 			return;
 		}
-		LOG_DBG("msg started, rx proto = %s",
+		K_DEBUG("msg started, rx proto = %s\n",
 			data->curr_rx_proto->name);
 		data->curr_rx_net_buf =
 			net_buf_alloc_len(&spi_ipc_pool,
 					  32 + spi_ipc_data_len(in), 0);
 		if (!data->curr_rx_net_buf) {
-			LOG_ERR("cannot allocate rx net buffer");
+			printk("cannot allocate rx net buffer\n");
 			return;
 		}
 		stat = k_mem_slab_alloc(&spi_ipc_msg_slab,
 					(void **)&data->curr_rx_spi_msg, 0);
 		if (stat < 0) {
-			LOG_ERR("cannot allocate rx spi message");
+			printk("cannot allocate rx spi message\n");
 			data->n_discard_subframes = spi_ipc_data_subframes(in);
 			net_buf_unref(data->curr_rx_net_buf);
 			return;
@@ -452,7 +452,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		data->curr_rx_spi_msg->reply = NULL;
 		data->curr_rx_spi_msg->data_len = spi_ipc_data_len(in);
 		data->curr_rx_spi_msg->trans = spi_ipc_transaction(in);
-		LOG_DBG("transaction = %u, data_len = %u",
+		K_DEBUG("transaction = %u, data_len = %u\n",
 			data->curr_rx_spi_msg->trans,
 			data->curr_rx_spi_msg->data_len);
 	}
@@ -460,19 +460,19 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 	l =  tot_msg_len - net_buf_frags_len(data->curr_rx_net_buf);
 	if (l > sizeof(union spi_thb))
 		l = sizeof(union spi_thb);
-	LOG_DBG("tot msg len = %d, adding %d", tot_msg_len, l);
-	LOG_DBG("in = 0x%08x", *(uint32_t *)in);
+	K_DEBUG("tot msg len = %d, adding %d\n", tot_msg_len, l);
+	K_DEBUG("in = 0x%08x\n", *(uint32_t *)in);
 	net_buf_add_mem(data->curr_rx_net_buf, in, l);
-	LOG_DBG("received length = %d",
+	K_DEBUG("received length = %d\n",
 		net_buf_frags_len(data->curr_rx_net_buf));
 	if (net_buf_frags_len(data->curr_rx_net_buf) >= tot_msg_len) {
 		request = _find_matching_request(data);
-		LOG_DBG("%s: frame received, matching request = %p", __func__,
+		K_DEBUG("%s: frame received, matching request = %p\n", __func__,
 		       request);
 		if (request) {
 			/* Input message is a reply */
 			request->reply = data->curr_rx_spi_msg;
-			LOG_DBG("frame is a reply, invoking reply cb %p",
+			K_DEBUG("frame is a reply, invoking reply cb %p\n",
 			       request->reply_cb);
 			if (request->reply_cb)
 				request->reply_cb(data->curr_rx_net_buf,
@@ -483,11 +483,11 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 			 */
 			if (data->curr_rx_spi_msg &&
 			    (data->curr_rx_spi_msg->flags_error & LAST_REPLY)) {
-				LOG_DBG("last reply for request");
+				K_DEBUG("last reply for request\n");
 				remove_outstanding_request(&request);
 			}
 		} else {
-			LOG_DBG("request/notification received");
+			K_DEBUG("request/notification received\n");
 			data->curr_rx_proto->rx_cb(data->curr_rx_proto,
 						   data,
 						   data->curr_rx_net_buf,
@@ -513,7 +513,7 @@ static void check_dev(struct device *dev)
 
 	k_sem_take(&data->sem, K_FOREVER);
 	k_poll_signal_check(&data->spi_signal, &spi_done, &result);
-	LOG_DBG("k_poll_signal_check(): signal = %u, result = %d",
+	K_DEBUG("k_poll_signal_check(): signal = %u, result = %d\n",
 		spi_done, result);
 	if (spi_done) {
 		/* Spi slave transaction done */
@@ -521,7 +521,7 @@ static void check_dev(struct device *dev)
 		/* Reset transfer request */
 		spi_ipc_reset_spi_xfer_request(data, cfg);
 		/* Handle input buffer */
-		LOG_DBG("%s %d, input buf = %p", __func__, __LINE__,
+		K_DEBUG("%s %d, input buf = %p\n", __func__, __LINE__,
 			data->spi_input_buf.buf);
 		spi_ipc_handle_input(data, data->spi_input_buf.buf);
 	}
@@ -533,8 +533,8 @@ static void check_dev(struct device *dev)
 	}
 	if (_check_mgmt_evt(data, &result)) {
 		if (result) {
-			LOG_ERR("ERROR MESSAGE FROM OTHER END (0x%04x)\n",
-				(unsigned short)result);
+			printk("ERROR MESSAGE FROM OTHER END (0x%04x)\n",
+			       (unsigned short)result);
 			/* FIXME: ANYTHING MORE TO DO HERE ? */
 		}
 	}
@@ -548,9 +548,9 @@ static s32_t get_dev_first_req_to(struct device *dev)
 	struct spi_msg *m =
 		SYS_DLIST_PEEK_HEAD_CONTAINER(&data->outstanding, m, list);
 
-	LOG_DBG("%s: timeout = %d", __func__, m ? m->expiry : K_FOREVER);
+	K_DEBUG("%s: timeout = %d\n", __func__, m ? m->expiry : K_FOREVER);
 	if (m && !m->expiry)
-		LOG_DBG("%s: timeout is 0 (p/c 0x%08x)!!", __func__,
+		K_DEBUG("%s: timeout is 0 (p/c 0x%08x)\n", __func__,
 		       m->proto_code);
 
 	return m ? m->expiry : K_FOREVER;
@@ -563,15 +563,15 @@ static void update_dev_first_timeout(struct device *dev, u32_t delta)
 		SYS_DLIST_PEEK_HEAD_CONTAINER(&data->outstanding, m, list);
 
 	if (!m) {
-		LOG_ERR("%s invoked with no message !!", __func__);
+		printk("%s invoked with no message !!\n", __func__);
 		return;
 	}
 	m->expiry -= delta;
 	if (m->expiry < 0) {
-		LOG_ERR("%s: new timeout is < 0 !!", __func__);
+		printk("%s: new timeout is < 0 !!\n", __func__);
 		m->expiry = 0;
 	}
-	LOG_DBG("%s: msg %p (0x%08x), new timeout = %d", __func__, m,
+	K_DEBUG("%s: msg %p (0x%08x), new timeout = %d\n", __func__, m,
 		m->proto_code, m->expiry);
 }
 
@@ -622,17 +622,17 @@ static void spi_ipc_main(void *arg)
 			}
 		}
 		if (!ndevs && !dont_setup) {
-			LOG_DBG("NO ACTIVE DEVICES");
+			K_DEBUG("NO ACTIVE DEVICES\n");
 			k_sleep(K_MSEC(1000));
 			continue;
 		}
 
 		poll_start = k_uptime_get();
-		LOG_DBG("%s: entering k_poll, now = %llu, next_timeout = %d",
+		K_DEBUG("%s: entering k_poll, now = %llu, next_timeout = %d\n",
 			__func__, poll_start, next_timeout);
 		stat = k_poll(events, ARRAY_SIZE(events), next_timeout);
 		delta = k_uptime_delta_32(&poll_start);
-		LOG_DBG("%s: k_poll() returned %d, delta = %u", __func__,
+		K_DEBUG("%s: k_poll() returned %d, delta = %u\n", __func__,
 		       stat, delta);
 
 		if (stat == -EINTR) {
@@ -642,7 +642,7 @@ static void spi_ipc_main(void *arg)
 
 		if (stat == -EAGAIN) {
 			/* Request timeout */
-			LOG_DBG("TIMEOUT  !!!\n");
+			K_DEBUG("TIMEOUT  !!!\n");
 			dont_setup = 1;
 			if (dev_with_request_to)
 				handle_to_requests(dev_with_request_to);
@@ -651,17 +651,17 @@ static void spi_ipc_main(void *arg)
 		dont_setup = 0;
 		/* No timeout, update next */
 		if (dev_with_request_to) {
-			LOG_DBG("UPDATING FIRST TIMEOUT");
+			K_DEBUG("UPDATING FIRST TIMEOUT\n");
 			update_dev_first_timeout(dev_with_request_to, delta);
-			LOG_DBG("FIRST TIMEOUT UPDATED");
+			K_DEBUG("FIRST TIMEOUT UPDATED\n");
 		}
 
 		for (i = 0; i < ARRAY_SIZE(active_devices); i++) {
 			if (active_devices[i]) {
-				LOG_DBG("Invoking check_dev() (%p)",
+				K_DEBUG("Invoking check_dev() (%p)\n",
 					active_devices[i]);
 				check_dev(active_devices[i]);
-				LOG_DBG("check_dev() done");
+				K_DEBUG("check_dev() done\n");
 			}
 		}
 		dont_setup = 0;
@@ -680,13 +680,13 @@ static int spi_ipc_drv_open(struct device *dev, const struct spi_ipc_proto *p,
 	k_sem_take(&data->sem, K_FOREVER);
 	if (_find_proto(data, p->proto_id, NULL)) {
 		k_sem_give(&data->sem);
-		LOG_ERR("%s: protocol already registered\n", __func__);
+		printk("%s: protocol already registered\n", __func__);
 		return -EBUSY;
 	}
 	stat = _new_proto(data, p, proto_data);
 	if (stat < 0) {
 		k_sem_give(&data->sem);
-		LOG_ERR("%s failed (%d)\n", __func__, stat);
+		printk("%s failed (%d)\n", __func__, stat);
 		return stat;
 	}
 	if (!data->nopen++) {
@@ -724,12 +724,12 @@ static int spi_ipc_submit_buf(struct device *dev,
 	msg->reply_cb = reply_cb;
 	msg->cb_arg = cb_arg;
 	msg->expiry = expiry;
-	LOG_DBG("new msg (0x%08x) = %p\n", msg->proto_code, msg);
+	K_DEBUG("new msg (0x%08x) = %p\n", msg->proto_code, msg);
 
 	if (msg->proto_code & SPI_IPC_REQUEST) {
-		LOG_DBG("%s %d, appending request %p (0x%08x)\n",
+		K_DEBUG("%s %d, appending request %p (0x%08x)\n",
 		       __func__, __LINE__, msg, msg->proto_code);
-		LOG_DBG("message %p is a request, appending to list of outstanding requests\n", msg);
+		K_DEBUG("message %p is a request, appending to list of outstanding requests\n", msg);
 		/*
 		 * If message is a request, append it
 		 * to the list of outstanding requests
@@ -763,7 +763,7 @@ static int spi_ipc_common_init(struct device *dev)
 {
 	ARG_UNUSED(dev);
 
-	LOG_DBG("%s invoked\n", __func__);
+	K_DEBUG("%s invoked\n", __func__);
 
 	/* Initialize spi messages memory slab */
 	k_mem_slab_init(&spi_ipc_msg_slab, spi_msg_slab_buf,
@@ -785,11 +785,11 @@ static int spi_ipc_init(struct device *dev)
 	struct spi_ipc_data *data = dev->driver_data;
 
 	if (!cfg) {
-		LOG_ERR("%s: no configuration info available\n", __func__);
+		printk("%s: no configuration info available\n", __func__);
 		return -EINVAL;
 	}
 	if (!data) {
-		LOG_ERR("%s: pointer to driver data is NULL\n", __func__);
+		printk("%s: pointer to driver data is NULL\n", __func__);
 		return -EINVAL;
 	}
 
@@ -816,14 +816,14 @@ static int spi_ipc_init(struct device *dev)
 
 	data->spi_dev = device_get_binding(cfg->spi_dev_label);
 	if (!data->spi_dev) {
-		LOG_ERR("%s: cannot find spi controller\n", __func__);
+		printk("%s: cannot find spi controller\n", __func__);
 		return -ENODEV;
 	}
 
 	data->gpio_dev = device_get_binding(cfg->gpio_dev_label);
 	if (!data->gpio_dev) {
-		LOG_ERR("%s: cannot find poll request gpio controller\n",
-			__func__);
+		printk("%s: cannot find poll request gpio controller\n",
+		       __func__);
 		return -ENODEV;
 	}
 	gpio_pin_configure(data->gpio_dev, cfg->gpio_pin_number,
@@ -843,10 +843,10 @@ static int spi_ipc_init(struct device *dev)
 	active_devices[cfg->minor] = dev;
 
 	if (init_mgmt(dev, data) < 0)
-		LOG_ERR("spi-ipc (%s): low level mgmt init error\n",
-			dev->config->name);
+		printk("spi-ipc (%s): low level mgmt init error\n",
+		       dev->config->name);
 
-	LOG_DBG("spi-ipc driver initialized (%s)", dev->config->name);
+	K_DEBUG("spi-ipc driver initialized (%s)", dev->config->name);
 
 	return 0;
 }

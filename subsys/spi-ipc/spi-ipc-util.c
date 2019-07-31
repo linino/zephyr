@@ -24,7 +24,7 @@ static void reply_cb(struct net_buf *reply, void *cb_arg)
 	struct spi_ipc_simple_tdata *stdata = cb_arg;
 
 	if (!stdata) {
-		LOG_ERR("%s: NULL cb_arg\n", __func__);
+		printk("%s: NULL cb_arg\n", __func__);
 		return;
 	}
 	if (!reply) {
@@ -49,7 +49,7 @@ int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 	int ret;
 
 	if (!buf) {
-		LOG_ERR("%s: no memory\n", __func__);
+		printk("%s: no memory\n", __func__);
 		return -ENOMEM;
 	}
 	spi_ipc_set_transaction(request_hdr, spi_ipc_new_transaction());
@@ -68,8 +68,8 @@ int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 	net_buf_linearize(&b.hdr, sizeof(b.hdr), stdata.reply, 0,
 			  sizeof(b.hdr));
 	if (spi_ipc_error(&b)) {
-		LOG_ERR("%s: error from remote (%d)\n", __func__,
-			spi_ipc_error(&b));
+		printk("%s: error from remote (%d)\n", __func__,
+		       spi_ipc_error(&b));
 		ret = spi_ipc_error(&b);
 		goto end1;
 	}

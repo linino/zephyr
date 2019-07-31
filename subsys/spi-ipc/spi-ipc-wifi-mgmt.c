@@ -51,10 +51,10 @@ static void _scan_msg_cb(struct net_buf *reply, void *cb_arg)
 	int error;
 	u8_t rssi, sec, ch, ssl;
 
-	LOG_DBG("%s %d\n", __func__, __LINE__);
+	K_DEBUG("%s %d\n", __func__, __LINE__);
 
 	if (!reply) {
-		LOG_DBG("NO REPLY, TIMEOUT !\n");
+		K_DEBUG("NO REPLY, TIMEOUT !\n");
 		k_sem_give(&scbd->completion_sem);
 		return;
 	}
@@ -78,7 +78,7 @@ static void _scan_msg_cb(struct net_buf *reply, void *cb_arg)
 	sec = (nd.ssl_ch_sec_psl_rssi >> 16) & 0xffUL;
 	rssi = (nd.ssl_ch_sec_psl_rssi >> 24) & 0xffUL;
 
-	LOG_DBG("ssl = %u, ch = %u, sec = %u, rssi = %u", ssl, ch, sec, rssi);
+	K_DEBUG("ssl = %u, ch = %u, sec = %u, rssi = %u\n", ssl, ch, sec, rssi);
 
 	memset(sr.ssid, 0, sizeof(sr.ssid));
 	sr.ssid_length = ssl;
@@ -89,13 +89,13 @@ static void _scan_msg_cb(struct net_buf *reply, void *cb_arg)
 
 	net_buf_linearize(sr.ssid, ssl, reply, sizeof(thb.data), ssl);
 
-	LOG_DBG("%s, found network %s\n", __func__, sr.ssid);
+	K_DEBUG("%s, found network %s\n", __func__, sr.ssid);
 
 	/* Signal scan result */
 	scbd->cb(scbd->iface, error, &sr);
 
 	if (spi_ipc_is_last_reply(&thb)) {
-		LOG_DBG("SCAN LAST REPLY");
+		K_DEBUG("SCAN LAST REPLY\n");
 		/* Signal scan done */
 		scbd->cb(scbd->iface, error, NULL);
 		/* Make spi_ipc_wifi_mgmt_scan finish */
@@ -122,7 +122,7 @@ int spi_ipc_wifi_mgmt_scan(struct device *dev, scan_result_cb_t cb)
 	if (ret)
 		return ret;
 	if (k_sem_take(&scbd.completion_sem, 10000)) {
-		LOG_ERR("%s: timeout", __func__);
+		printk("%s: timeout\n", __func__);
 		/* FIXME: INVOKE CALLBACK ? */
 		/* FIXME: CANCEL BUFFER ? */
 	}
@@ -159,7 +159,7 @@ int spi_ipc_wifi_mgmt_connect(struct device *dev,
 	spi_ipc_set_data_len(&b, len - sizeof(union spi_thb));
 	buf = net_buf_alloc_len(&wifi_mgmt_pool, len, 1000);
 	if (!buf) {
-		LOG_ERR("%s: NO MEMORY FOR BUFFER \n", __func__);
+		printk("%s: NO MEMORY FOR BUFFER\n", __func__);
 		return -ENOMEM;
 	}
 	/* Set up protocol specific part of header */
@@ -174,7 +174,7 @@ int spi_ipc_wifi_mgmt_connect(struct device *dev,
 	/* Add ssid */
 	memset(&b, 0, sizeof(b));
 	memcpy(&b, params->ssid, min(params->ssid_length, sizeof(b)));
-	LOG_DBG("ssid = %s", params->ssid);
+	K_DEBUG("ssid = %s\n", params->ssid);
 	net_buf_add_mem(buf, &b, sizeof(b));
 	/* Add psk */
 	memset(&b, 0, sizeof(b));
@@ -214,7 +214,7 @@ int spi_ipc_wifi_mgmt_disconnect(struct device *dev)
 
 	buf = net_buf_alloc_len(&wifi_mgmt_pool, sizeof(b), 1000);
 	if (!buf) {
-		LOG_ERR("%s: NO MEMORY FOR BUFFER \n", __func__);
+		printk("%s: NO MEMORY FOR BUFFER\n", __func__);
 		return -ENOMEM;
 	}
 	net_buf_add_mem(buf, &b, sizeof(b));
