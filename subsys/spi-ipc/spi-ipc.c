@@ -276,43 +276,6 @@ static struct spi_msg *_find_matching_request(struct spi_ipc_data *data)
 	return NULL;
 }
 
-static int check_req_timeout(sys_dnode_t *node, void *data)
-{
-	/*
-	 * m = spi message to be inserted,
-	 * n = next spi message in requests list
-	 * The outstanding requests list is a delta list: members are ordered
-	 * by increasing expiry field.
-	 */
-	struct spi_msg *m = data;
-	struct spi_msg *n = SYS_DLIST_CONTAINER(node, n, list);
-
-	/* No next: this should never happen, actually */
-	if (!n)
-		return 0;
-	/*
-	 * Node to be inserted never expires, just append it at the end of
-	 * the list
-	 */
-	if (m->expiry == K_FOREVER)
-		return 0;
-	/*
-	 * next node never expires
-	 */
-	if (n->expiry == K_FOREVER)
-		return 1;
-	/*
-	 * next node (n) expires after the node to be inserted (m)
-	 */
-	if (m->expiry <= n->expiry) {
-		n->expiry -= m->expiry;
-		return 1;
-	}
-	/* Go on searching */
-	m->expiry -= n->expiry;
-	return 0;
-}
-
 static void setup_dev(struct device *dev)
 {
 	struct spi_ipc_data *data = dev->driver_data;
@@ -541,100 +504,29 @@ static void check_dev(struct device *dev)
 	k_sem_give(&data->sem);
 }
 
-/* Returns timeout of first request to expire */
-static s32_t get_dev_first_req_to(struct device *dev)
-{
-	struct spi_ipc_data *data = dev->driver_data;
-	struct spi_msg *m =
-		SYS_DLIST_PEEK_HEAD_CONTAINER(&data->outstanding, m, list);
-
-	K_DEBUG("%s: timeout = %d\n", __func__, m ? m->expiry : K_FOREVER);
-	if (m && !m->expiry)
-		K_DEBUG("%s: timeout is 0 (p/c 0x%08x)\n", __func__,
-		       m->proto_code);
-
-	return m ? m->expiry : K_FOREVER;
-}
-
-static void update_dev_first_timeout(struct device *dev, u32_t delta)
-{
-	struct spi_ipc_data *data = dev->driver_data;
-	struct spi_msg *m =
-		SYS_DLIST_PEEK_HEAD_CONTAINER(&data->outstanding, m, list);
-
-	if (!m) {
-		printk("%s invoked with no message !!\n", __func__);
-		return;
-	}
-	m->expiry -= delta;
-	if (m->expiry < 0) {
-		printk("%s: new timeout is < 0 !!\n", __func__);
-		m->expiry = 0;
-	}
-	K_DEBUG("%s: msg %p (0x%08x), new timeout = %d\n", __func__, m,
-		m->proto_code, m->expiry);
-}
-
-static void handle_to_requests(struct device *dev)
-{
-	struct spi_ipc_data *data = dev->driver_data;
-	struct spi_msg *m =
-		SYS_DLIST_PEEK_HEAD_CONTAINER(&data->outstanding, m, list);
-
-	K_DEBUG("%s, message %p (0x%08x)\n", __func__, m, m->proto_code);
-	if (m->reply)
-		return;
-	/*
-	 * No reply received within specified timeout, invoke reply
-	 * cb with NULL reply parameter
-	 */
-	K_DEBUG("%s: no reply, invoking reply_cb(NULL, ...)\n",
-		__func__);
-	if (m->reply_cb)
-		m->reply_cb(NULL, m->cb_arg);
-	printk("%s: freeing message and relevant netbuf\n", __func__);
-	remove_outstanding_request(&m);
-}
-
 /* SPI IPC thread */
 static void spi_ipc_main(void *arg)
 {
-	int i, stat, ndevs, dont_setup = 0;
-	s32_t next_timeout, to;
-	s64_t poll_start;
-	u32_t delta;
+	int i, stat, ndevs;
 
 	while (1) {
-		struct device *dev_with_request_to = NULL;
-
-		for (i = 0, ndevs = 0, to = K_FOREVER, next_timeout = K_FOREVER;
-		     i < ARRAY_SIZE(active_devices) && !dont_setup; i++) {
+		for (i = 0, ndevs = 0; i < ARRAY_SIZE(active_devices); i++) {
 			struct device *d = active_devices[i];
-
+			
 			if (d) {
 				setup_dev(d);
-				to = get_dev_first_req_to(d);
-				if (((next_timeout < 0) && to >= 0) ||
-					to < next_timeout) {
-					next_timeout = to;
-					dev_with_request_to = d;
-				}
 				ndevs++;
 			}
 		}
-		if (!ndevs && !dont_setup) {
+		if (!ndevs) {
 			K_DEBUG("NO ACTIVE DEVICES\n");
 			k_sleep(K_MSEC(1000));
 			continue;
 		}
 
-		poll_start = k_uptime_get();
-		K_DEBUG("%s: entering k_poll, now = %llu, next_timeout = %d\n",
-			__func__, poll_start, next_timeout);
-		stat = k_poll(events, ARRAY_SIZE(events), next_timeout);
-		delta = k_uptime_delta_32(&poll_start);
-		K_DEBUG("%s: k_poll() returned %d, delta = %u\n", __func__,
-		       stat, delta);
+		K_DEBUG("%s: entering K_POLL\n");
+		stat = k_poll(events, ARRAY_SIZE(events), K_FOREVER);
+		K_DEBUG("%s: k_poll() returned %d\n", __func__, stat);
 
 		if (stat == -EINTR) {
 			/* FIXME: DO SOMETHING HERE ?? */
@@ -642,21 +534,9 @@ static void spi_ipc_main(void *arg)
 		}
 
 		if (stat == -EAGAIN) {
-			/* Request timeout */
-			K_DEBUG("TIMEOUT  !!!\n");
-			dont_setup = 1;
-			if (dev_with_request_to)
-				handle_to_requests(dev_with_request_to);
+			/* Request timeout, should never happen */
 			continue;
 		}
-		dont_setup = 0;
-		/* No timeout, update next */
-		if (dev_with_request_to) {
-			K_DEBUG("UPDATING FIRST TIMEOUT\n");
-			update_dev_first_timeout(dev_with_request_to, delta);
-			K_DEBUG("FIRST TIMEOUT UPDATED\n");
-		}
-
 		for (i = 0; i < ARRAY_SIZE(active_devices); i++) {
 			if (active_devices[i]) {
 				K_DEBUG("Invoking check_dev() (%p)\n",
@@ -665,7 +545,6 @@ static void spi_ipc_main(void *arg)
 				K_DEBUG("check_dev() done\n");
 			}
 		}
-		dont_setup = 0;
 	}
 }
 
@@ -735,10 +614,8 @@ static int spi_ipc_submit_buf(struct device *dev,
 		 * If message is a request, append it
 		 * to the list of outstanding requests
 		 */
-		sys_dlist_insert_at(&data->outstanding,
-				    &msg->list,
-				    check_req_timeout,
-				    msg);
+		sys_dlist_append(&data->outstanding,
+				 &msg->list);
 		/*
 		 * Buffer will be unreferenced after tx, keep
 		 * a reference to it
