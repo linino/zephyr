@@ -220,6 +220,22 @@ void spi_ipc_reset_spi_xfer_request(struct spi_ipc_data *data,
 	gpio_pin_write(data->gpio_dev, cfg->gpio_pin_number, 0);
 }
 
+static inline void _net_buf_ref(struct net_buf *nb)
+{
+	net_buf_ref(nb);
+}
+
+static inline void _net_buf_unref(struct net_buf *nb)
+{
+	struct spi_msg *m = NULL;
+
+	if (nb->ref == 1)
+		memcpy(&m, nb->user_data, sizeof(m));
+
+	net_buf_unref(nb);
+	if (m)
+		k_mem_slab_free(&spi_ipc_msg_slab, (void **)&m);
+}
 
 static int _new_proto(struct spi_ipc_data *data,
 		      const struct spi_ipc_proto *p, void *proto_data)
@@ -318,7 +334,7 @@ static void setup_dev(struct device *dev)
 		if (!ptr) {
 			printk("%s %d, no data in buffer\n", __func__,
 				__LINE__);
-			net_buf_unref(data->curr_tx_net_buf);
+			_net_buf_unref(data->curr_tx_net_buf);
 			k_sem_give(&data->sem);
 			return;
 		}
@@ -331,9 +347,7 @@ static void setup_dev(struct device *dev)
 		data->output_index = (data->output_index + 1) & 0x1;
 		if (_l <= sizeof(union spi_thb)) {
 			/* Last tx for this message All done */
-			net_buf_unref(data->curr_tx_net_buf);
-			k_mem_slab_free(&spi_ipc_msg_slab,
-					(void **)&data->curr_tx_spi_msg);
+			_net_buf_unref(data->curr_tx_net_buf);
 			data->curr_tx_net_buf = NULL;
 			data->curr_tx_spi_msg = NULL;
 		}
@@ -370,9 +384,7 @@ static int remove_outstanding_request(struct spi_msg **_request)
 	int ret = 0;
 
 	sys_dlist_remove(&request->list);
-	printk("%s: net_buf_unref(%p)\n", __func__, request->netbuf);
-	net_buf_unref(request->netbuf);
-	k_mem_slab_free(&spi_ipc_msg_slab, (void **)_request);
+	_net_buf_unref(request->netbuf);
 	return ret;
 }
 
@@ -391,6 +403,9 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		return;
 	}
 	if (!data->curr_rx_net_buf) {
+		struct net_buf *nb;
+		struct spi_msg *m;
+
 		if (in->hdr.magic != SPI_IPC_MAGIC) {
 			K_DEBUG("%s: no spi magic (0x%08x)\n", __func__,
 				in->hdr.magic);
@@ -406,30 +421,30 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		}
 		K_DEBUG("msg started, rx proto = %s\n",
 			data->curr_rx_proto->name);
-		data->curr_rx_net_buf =
-			net_buf_alloc_len(&spi_ipc_pool,
-					  32 + spi_ipc_data_len(in), 0);
-		if (!data->curr_rx_net_buf) {
+		nb = net_buf_alloc_len(&spi_ipc_pool,
+				       32 + spi_ipc_data_len(in), 0);
+		data->curr_rx_net_buf = nb;
+		if (!nb) {
 			printk("cannot allocate rx net buffer\n");
 			return;
 		}
-		stat = k_mem_slab_alloc(&spi_ipc_msg_slab,
-					(void **)&data->curr_rx_spi_msg, 0);
+		stat = k_mem_slab_alloc(&spi_ipc_msg_slab, (void **)&m, 0);
 		if (stat < 0) {
 			printk("cannot allocate rx spi message\n");
 			data->n_discard_subframes = spi_ipc_data_subframes(in);
-			net_buf_unref(data->curr_rx_net_buf);
+			_net_buf_unref(data->curr_rx_net_buf);
 			return;
 		}
 		data->n_discard_subframes = 0;
-		data->curr_rx_spi_msg->flags_error = in->hdr.flags_error;
-		data->curr_rx_spi_msg->proto_code = in->hdr.proto_code;
-		data->curr_rx_spi_msg->netbuf = data->curr_rx_net_buf;
-		data->curr_rx_spi_msg->data_len = spi_ipc_data_len(in);
-		data->curr_rx_spi_msg->trans = spi_ipc_transaction(in);
-		K_DEBUG("transaction = %u, data_len = %u\n",
-			data->curr_rx_spi_msg->trans,
-			data->curr_rx_spi_msg->data_len);
+		memcpy(nb->user_data, &m, sizeof(m));
+		data->curr_rx_spi_msg = m;
+		m->flags_error = in->hdr.flags_error;
+		m->proto_code = in->hdr.proto_code;
+		m->netbuf = data->curr_rx_net_buf;
+		m->data_len = spi_ipc_data_len(in);
+		m->trans = spi_ipc_transaction(in);
+		K_DEBUG("transaction = %u, data_len = %u\n", m->trans,
+			m->data_len);
 	}
 	tot_msg_len = data->curr_rx_spi_msg->data_len + sizeof(union spi_thb);
 	l =  tot_msg_len - net_buf_frags_len(data->curr_rx_net_buf);
@@ -485,10 +500,8 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		 * Rx cb should have referenced the net buffer if
 		 * interested
 		 */
-		net_buf_unref(data->curr_rx_net_buf);
+		_net_buf_unref(data->curr_rx_net_buf);
 		data->curr_rx_net_buf = NULL;
-		k_mem_slab_free(&spi_ipc_msg_slab,
-				(void **)&data->curr_rx_spi_msg);
 		data->curr_rx_spi_msg = NULL;
 	}
 }
@@ -694,7 +707,8 @@ static int spi_ipc_submit_buf(struct device *dev,
 		 * Buffer will be unreferenced after tx, keep
 		 * a reference to it
 		 */
-		net_buf_ref(outgoing);
+		K_DEBUG("OUTGOING NETBUF %p, request %p\n", outgoing, msg);
+		_net_buf_ref(outgoing);
 
 		if (expiry > 0) {
 			/* Setup timeout, 0 timeout not accepted */
@@ -707,8 +721,6 @@ static int spi_ipc_submit_buf(struct device *dev,
 	BUILD_ASSERT(sizeof(msg) <= CONFIG_NET_BUF_USER_DATA_SIZE);
 
 	memcpy(outgoing->user_data, &msg, sizeof(msg));
-
-	net_buf_ref(outgoing);
 
 	/* Enqueue buffer */
 	net_buf_put(&data->fifo, outgoing);
