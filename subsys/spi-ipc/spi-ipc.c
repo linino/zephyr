@@ -682,6 +682,7 @@ static int spi_ipc_submit_buf(struct device *dev,
 	net_buf_linearize(&header, sizeof(header), outgoing, 0, sizeof(header));
 	msg->flags_error = (u16_t)(-ETIMEDOUT);
 	msg->data_len = spi_ipc_data_len(&header);
+	msg->trans = spi_ipc_transaction(&header);
 	msg->netbuf = outgoing;
 	msg->proto_code = header.hdr.proto_code;
 	msg->reply_cb = reply_cb;
