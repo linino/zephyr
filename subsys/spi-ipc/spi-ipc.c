@@ -83,9 +83,11 @@ struct spi_msg {
 	/* Signal used for request removal */
 	struct k_poll_signal *removal_signal;
 	/* Atomic flags */
-#define REQ_DONE 0
-#define REQ_TIMEDOUT 1	
-	atomic_val_t aflags;
+#define REQ_RUNNING		0
+#define REQ_DONE_OK		1
+#define REQ_DONE_TIMEDOUT	2
+#define REQ_DONE_REMOVING	3
+	atomic_val_t status;
 };
 
 struct spi_ipc_config_data {
@@ -443,26 +445,34 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		K_DEBUG("%s: frame received, matching request = %p\n", __func__,
 		       request);
 		if (request) {
+			int last_reply = data->curr_rx_spi_msg->flags_error &
+				LAST_REPLY;
+			int next_state = last_reply ? REQ_DONE_OK : REQ_RUNNING;
+
 			/* Input message is a reply */
 			K_DEBUG("frame is a reply, invoking reply cb %p\n",
 			       request->reply_cb);
-			/* Cancel timeout */
-			k_delayed_work_cancel(&request->to_work);
+			/*
+			 * If request is not running, a timeout has occurred
+			 * Removal should already have been scheduled
+			 */
+			if (!atomic_cas(&request->status, REQ_RUNNING,
+					next_state))
+				return;
+			/* Request is running, invoke its callback */
 			if (request->reply_cb)
 				request->reply_cb(data->curr_rx_net_buf,
 						  request->cb_arg);
-			/*
-			 * Schedule related request for removal from
-			 * outstanding list and total distruction,
-			 * if this is the last reply
-			 */
-			if (data->curr_rx_spi_msg &&
-			    (data->curr_rx_spi_msg->flags_error & LAST_REPLY)) {
-				K_DEBUG("last reply for request\n");
-				if (!(atomic_test_and_set_bit(&request->aflags,
-							      REQ_DONE)))
-					k_poll_signal_raise(request->timeout_signal,
-							    (int)request);
+			if (last_reply) {
+				/*
+				 * Request complete: cancel timeout
+				 * and schedule request for removal
+				 */
+				K_DEBUG("last reply for request %p\n",
+					request);
+				k_delayed_work_cancel(&request->to_work);
+				k_poll_signal_raise(request->removal_signal,
+						    (int)request);
 			}
 		} else {
 			K_DEBUG("request/notification received\n");
@@ -488,7 +498,7 @@ static int check_dev(struct device *dev)
 	const struct spi_ipc_config_data *cfg = dev->config->config_info;
 	struct spi_ipc_data *data = dev->driver_data;
 	int spi_done, result;
-	int timeout_happened;
+	int do_remove;
 	union {
 		int dummy;
 		struct spi_msg *request;
@@ -510,18 +520,19 @@ static int check_dev(struct device *dev)
 		spi_ipc_handle_input(data, data->spi_input_buf.buf);
 		ret = 1;
 	}
-	k_poll_signal_check(&data->removal_signal, &timeout_happened,
+	k_poll_signal_check(&data->removal_signal, &do_remove,
 			    &to_result.dummy);
 	K_DEBUG("k_poll_signal_check(): removal = %u, result = %d\n",
-		timeout_happened, result);
-	if (timeout_happened) {
+		do_remove, result);
+	if (do_remove) {
 		/* Timeout on request */
 		struct spi_msg *req = to_result.request;
 
 		K_DEBUG("Removing request %p\n", req);
 		k_poll_signal_reset(&data->removal_signal);
-		if (req->reply_cb && atomic_test_bit(&req->aflags,
-						     REQ_TIMEDOUT))
+		if (req->reply_cb &&
+		    atomic_cas(&req->status,
+			       REQ_DONE_TIMEDOUT, REQ_DONE_REMOVING))
 			req->reply_cb(NULL, req->cb_arg);
 		remove_outstanding_request(&req);
 	}
@@ -630,9 +641,8 @@ static void request_timeout(struct k_work *work)
 {
 	struct spi_msg *request = CONTAINER_OF(work, struct spi_msg, to_work);
 
-	if (!(atomic_test_and_set_bit(&request->aflags, REQ_DONE)))
-		/* Request not done yet, schedule it for removal with timeout */
-		atomic_set_bit(&request->aflags, REQ_TIMEDOUT);
+	if (!(atomic_cas(&request->status, REQ_RUNNING, REQ_DONE_TIMEDOUT)))
+		return;
 	/* Otherwise just remove it */
 	K_DEBUG("%s: raising removal signal\n", __func__);
 	k_poll_signal_raise(request->removal_signal, (int)request);
@@ -665,7 +675,7 @@ static int spi_ipc_submit_buf(struct device *dev,
 	msg->cb_arg = cb_arg;
 	msg->expiry = expiry;
 	msg->removal_signal = &data->removal_signal;
-	atomic_set(&msg->aflags, 0);
+	atomic_set(&msg->status, REQ_RUNNING);
 	K_DEBUG("new msg (0x%08x) = %p\n", msg->proto_code, msg);
 
 	if (msg->proto_code & SPI_IPC_REQUEST) {
