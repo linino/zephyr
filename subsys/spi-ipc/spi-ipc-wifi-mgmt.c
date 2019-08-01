@@ -116,6 +116,7 @@ int spi_ipc_wifi_mgmt_scan(struct device *dev, scan_result_cb_t cb)
 
 	scbd.cb = cb;
 	scbd.iface = iface;
+	spi_ipc_set_transaction(&b, spi_ipc_new_transaction());
 	k_sem_init(&scbd.completion_sem, 0, 1);
 	net_buf_add_mem(buf, &b, sizeof(b));
 	ret = api->submit_buf(dev, buf, _scan_msg_cb, &scbd, 10000);
@@ -157,6 +158,7 @@ int spi_ipc_wifi_mgmt_connect(struct device *dev,
 		len += sizeof(union spi_thb);
 	}
 	spi_ipc_set_data_len(&b, len - sizeof(union spi_thb));
+	spi_ipc_set_transaction(&b, spi_ipc_new_transaction());
 	buf = net_buf_alloc_len(&wifi_mgmt_pool, len, 1000);
 	if (!buf) {
 		printk("%s: NO MEMORY FOR BUFFER\n", __func__);
@@ -217,6 +219,7 @@ int spi_ipc_wifi_mgmt_disconnect(struct device *dev)
 		printk("%s: NO MEMORY FOR BUFFER\n", __func__);
 		return -ENOMEM;
 	}
+	spi_ipc_set_transaction(&b, spi_ipc_new_transaction());
 	net_buf_add_mem(buf, &b, sizeof(b));
 	ret = api->submit_buf(dev, buf, _disconnect_msg_cb, iface, 2000);
 	if (ret) {
