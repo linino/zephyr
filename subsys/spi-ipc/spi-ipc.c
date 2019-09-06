@@ -435,6 +435,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		nb = net_buf_alloc_len(&spi_ipc_pool,
 				       32 + spi_ipc_data_len(in), 0);
 		data->curr_rx_net_buf = nb;
+		memset(nb->user_data, 0, sizeof(m));
 		if (!nb) {
 			printk("cannot allocate rx net buffer\n");
 			return;
