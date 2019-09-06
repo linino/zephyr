@@ -125,6 +125,7 @@ struct spi_ipc_data {
 	struct spi_buf_set spi_output_bs;
 	struct spi_buf_set *tx_bs;
 	struct net_buf *curr_tx_net_buf;
+	size_t curr_tx_net_buf_offset;
 	struct spi_msg *curr_tx_spi_msg;
 	struct net_buf *curr_rx_net_buf;
 	struct spi_msg *curr_rx_spi_msg;
@@ -273,6 +274,8 @@ static const struct spi_ipc_proto *_find_proto(struct spi_ipc_data *data,
 	return NULL;
 }
 
+static const char _dummy_v[32] = "NOTHING_TO_SAY, REALLY          ";
+
 static struct spi_msg *_find_matching_request(struct spi_ipc_data *data)
 {
 	struct spi_msg *m = data->curr_rx_spi_msg;
@@ -305,20 +308,20 @@ static void setup_dev(struct device *dev)
 {
 	struct spi_ipc_data *data = dev->driver_data;
 	const struct spi_ipc_config_data *cfg = dev->config->config_info;
-	int stat;
+	int stat, request_master_attention = 0;
 
 	data->tx_bs = NULL;
 
 	k_sem_take(&data->sem, K_FOREVER);
 	if (!data->curr_tx_net_buf) {
 		data->curr_tx_net_buf = net_buf_get(&data->fifo, 0);
+		data->curr_tx_net_buf_offset = 0;
 		K_DEBUG("%s: got buffer %p\n", __func__, data->curr_tx_net_buf);
 	}
 	K_DEBUG("%s %d, curr_tx_net_buf  = %p\n", __func__, __LINE__,
 		data->curr_tx_net_buf);
 	if (data->curr_tx_net_buf) {
 		size_t l, _l;
-		void *ptr;
 		struct spi_msg *m;
 
 		if (!data->curr_tx_spi_msg) {
@@ -329,28 +332,32 @@ static void setup_dev(struct device *dev)
 		m = data->curr_tx_spi_msg;
 		_l = net_buf_frags_len(data->curr_tx_net_buf);
 		l = min(_l, sizeof(union spi_thb));
-		ptr = net_buf_pull_mem(data->curr_tx_net_buf, l);
-
-		if (!ptr) {
-			printk("%s %d, no data in buffer\n", __func__,
-				__LINE__);
-			_net_buf_unref(data->curr_tx_net_buf);
-			k_sem_give(&data->sem);
-			return;
-		}
 		memset(data->spi_output[data->output_index].data, 0,
 		       sizeof(data->spi_output[0]));
-		memcpy(data->spi_output[data->output_index].data, ptr, l);
+		net_buf_linearize(data->spi_output[data->output_index].data,
+				  l, data->curr_tx_net_buf,
+				  data->curr_tx_net_buf_offset, l);
+		data->curr_tx_net_buf_offset += l;
 		data->tx_bs = &data->spi_output_bs;
 		data->spi_output_buf.buf =
 		    &data->spi_output[data->output_index];
 		data->output_index = (data->output_index + 1) & 0x1;
-		if (_l <= sizeof(union spi_thb)) {
+		if (data->curr_tx_net_buf_offset >= _l) {
 			/* Last tx for this message All done */
-			_net_buf_unref(data->curr_tx_net_buf);
+			net_buf_unref(data->curr_tx_net_buf);
 			data->curr_tx_net_buf = NULL;
 			data->curr_tx_spi_msg = NULL;
 		}
+		request_master_attention = 1;
+	} else {
+		const char *v = _dummy_v;
+
+		memcpy(data->spi_output[data->output_index].data, v,
+		       sizeof(_dummy_v));
+		data->tx_bs = &data->spi_output_bs;
+		data->spi_output_buf.buf =
+		    &data->spi_output[data->output_index];
+		data->output_index = (data->output_index + 1) & 0x1;
 	}
 
 	/* Ping pong input buffer */
@@ -365,7 +372,8 @@ static void setup_dev(struct device *dev)
 	stat = spi_transceive_async(data->spi_dev, &data->spi_config,
 				    data->tx_bs, &data->spi_input_bs,
 				    &data->spi_signal);
-	if (data->tx_bs) {
+	K_DEBUG("spi_transceive_async() returned %d\n", stat);
+	if (request_master_attention) {
 		/* Request a transfer via gpio (we're slave) */
 		spi_ipc_request_spi_xfer(data, cfg);
 	}
