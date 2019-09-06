@@ -147,9 +147,11 @@ static struct spi_msg __aligned(4) spi_msg_slab_buf[N_SPI_MSGS];
     (NET_ETH_MAX_FRAME_SIZE/sizeof(union spi_thb) + \
      (NET_ETH_MAX_FRAME_SIZE%sizeof(union spi_thb) ? 1 : 0))
 
+static void _net_buf_destroy(struct net_buf *nb);
+
 NET_BUF_POOL_DEFINE(spi_ipc_pool, 2 * N_BUFFERS_PER_ETH_FRAME,
 		    sizeof(union spi_thb),
-		    sizeof(struct spi_msg *), NULL);
+		    sizeof(struct spi_msg *), _net_buf_destroy);
 static struct k_thread spi_ipc_thread;
 
 #ifdef CONFIG_SPI_IPC_MGMT
@@ -226,16 +228,17 @@ static inline void _net_buf_ref(struct net_buf *nb)
 	net_buf_ref(nb);
 }
 
-static inline void _net_buf_unref(struct net_buf *nb)
+static void _net_buf_destroy(struct net_buf *nb)
 {
 	struct spi_msg *m = NULL;
 
-	if (nb->ref == 1)
-		memcpy(&m, nb->user_data, sizeof(m));
+	memcpy(&m, nb->user_data, sizeof(m));
 
-	net_buf_unref(nb);
-	if (m)
+	net_buf_destroy(nb);
+
+	if (m) {
 		k_mem_slab_free(&spi_ipc_msg_slab, (void **)&m);
+	}
 }
 
 static int _new_proto(struct spi_ipc_data *data,
@@ -392,7 +395,7 @@ static int remove_outstanding_request(struct spi_msg **_request)
 	int ret = 0;
 
 	sys_dlist_remove(&request->list);
-	_net_buf_unref(request->netbuf);
+	net_buf_unref(request->netbuf);
 	return ret;
 }
 
@@ -440,7 +443,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		if (stat < 0) {
 			printk("cannot allocate rx spi message\n");
 			data->n_discard_subframes = spi_ipc_data_subframes(in);
-			_net_buf_unref(data->curr_rx_net_buf);
+			net_buf_unref(data->curr_rx_net_buf);
 			return;
 		}
 		data->n_discard_subframes = 0;
@@ -508,7 +511,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		 * Rx cb should have referenced the net buffer if
 		 * interested
 		 */
-		_net_buf_unref(data->curr_rx_net_buf);
+		net_buf_unref(data->curr_rx_net_buf);
 		data->curr_rx_net_buf = NULL;
 		data->curr_rx_spi_msg = NULL;
 	}
