@@ -108,7 +108,8 @@ int spi_ipc_wifi_mgmt_scan(struct device *dev, scan_result_cb_t cb)
 	struct net_if *iface = dev->driver_data;
 	struct net_buf *buf =
 	    net_buf_alloc_len(&wifi_mgmt_pool, sizeof(union spi_thb), 1000);
-	DECLARE_SPI_IPC_BUF(b, SPI_IPC_PROTO_WIFI_MGMT, SCAN_NETWORK | 0x8000,
+	DECLARE_SPI_IPC_BUF(b, SPI_IPC_PROTO_WIFI_MGMT,
+			    SCAN_NETWORK | SPI_IPC_REQUEST,
 			    0, 0, 0, 0);
 	struct scan_msg_cb_data static scbd;
 	const struct spi_ipc_driver_api *api = dev->driver_api;
