@@ -81,7 +81,8 @@ int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
 	DECLARE_SPI_IPC_BUF(thb, SPI_IPC_PROTO_ETHERNET, NET_PACKET, 0, 0, 0,
 			    0);
 	size_t len = net_pkt_get_len(pkt);
-	struct net_buf *hdr, *buf;
+	struct net_buf *hdr_frag;
+	struct net_pkt *cloned_pkt;
 	const struct spi_ipc_driver_api *api = dev->driver_api;
 
 	if (!api || !api->submit_buf)
@@ -89,21 +90,29 @@ int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
 
 	spi_ipc_set_data_len(&thb, len);
 	spi_ipc_set_transaction(&thb, spi_ipc_new_transaction());
-	hdr = net_pkt_get_frag(pkt, 1000);
-	if (!hdr) {
-		printk("%s: cannot allocate header fragment\n", __func__);
+	cloned_pkt = net_pkt_clone(pkt, K_NO_WAIT);
+	if (!cloned_pkt) {
+		printk("%s: CANNOT CLONE packet\n", __func__);
 		return -ENOMEM;
 	}
-	net_buf_add_mem(hdr, &thb, sizeof(thb));
-	/* Insert spi ipc header */
-	net_pkt_frag_insert(pkt, hdr);
-
-	/* Throw away network packet, but save its network buffer */
-	buf = pkt->buffer;
-	net_buf_ref(buf);
-	net_pkt_unref(pkt);
+	hdr_frag = net_pkt_get_frag(cloned_pkt, K_NO_WAIT);
+	if (!hdr_frag) {
+		net_pkt_unref(cloned_pkt);
+		return -ENOMEM;
+	}
+	net_buf_add_mem(hdr_frag, &thb, sizeof(thb));
+	net_pkt_frag_insert(cloned_pkt, hdr_frag);
+	net_pkt_cursor_init(cloned_pkt);
+	{
+		struct net_buf *frag = cloned_pkt->frags;
+		while (frag) {
+			net_pkt_frag_ref(frag);
+			frag = frag->frags;
+		}
+	}
 	/* Submit buffer, no reply expected */
-	ret = api->submit_buf(dev, buf, NULL, NULL, 0);
+	ret = api->submit_buf(dev, cloned_pkt->buffer, NULL, NULL, 0);
+	net_pkt_unref(cloned_pkt);
 	return ret;
 }
 
