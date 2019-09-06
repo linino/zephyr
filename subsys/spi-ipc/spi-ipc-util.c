@@ -83,7 +83,7 @@ int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 		size_t l = min(*len, spi_ipc_data_len(&b));
 
 		net_buf_linearize(reply_data, l, stdata.reply,
-				  sizeof(b.hdr), l);
+				  sizeof(b.data), l);
 		*len = l;
 	}
 end1:
