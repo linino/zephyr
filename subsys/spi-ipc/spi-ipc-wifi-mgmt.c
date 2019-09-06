@@ -144,7 +144,8 @@ int spi_ipc_wifi_mgmt_connect(struct device *dev,
 			      struct wifi_connect_req_params *params)
 {
 	struct net_if *iface = dev->driver_data;
-	DECLARE_SPI_IPC_BUF(b, SPI_IPC_PROTO_WIFI_MGMT, CONNECT,
+	DECLARE_SPI_IPC_BUF(b, SPI_IPC_PROTO_WIFI_MGMT,
+			    CONNECT | SPI_IPC_REQUEST,
 			    0, 0, 0, 0);
 	struct spi_ipc_wifi_connect_request_hdr *hdr =
 		(struct spi_ipc_wifi_connect_request_hdr *)&b;
