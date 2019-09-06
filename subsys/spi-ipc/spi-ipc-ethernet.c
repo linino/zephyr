@@ -37,12 +37,14 @@ static int spi_ipc_ether_get_mac(struct device *spi_ipc_dev, u8_t mac[6])
 		printk("%s: invalid reply length %d\n", __func__, len);
 		return -EINVAL;
 	}
+	printk("%s: got mac = 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x 0x%02x\n",
+	       __func__, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 	return ret;
 }
 
 void spi_ipc_iface_init(struct device *spi_ipc_dev, struct net_if *iface)
 {
-	u8_t mac[6];
+	static u8_t mac[6];
 
 	if (spi_ipc_ether_get_mac(spi_ipc_dev, mac) < 0) {
 		printk("could not read mac address\n");
