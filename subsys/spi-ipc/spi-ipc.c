@@ -748,6 +748,12 @@ static int spi_ipc_common_init(struct device *dev)
 
 	K_DEBUG("%s invoked\n", __func__);
 
+#ifdef CONFIG_SOC_SERIES_NRF52X
+	*(volatile uint32_t *)0x4006EC00 = 0x00009375;
+	*(volatile uint32_t *)0x4006ED08 = 0x00000003;
+	*(volatile uint32_t *)0x4006EC00 = 0x00009375;
+#endif
+
 	/* Initialize spi messages memory slab */
 	k_mem_slab_init(&spi_ipc_msg_slab, spi_msg_slab_buf,
 			sizeof(spi_msg_slab_buf[0]), N_SPI_MSGS);
