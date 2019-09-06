@@ -55,6 +55,7 @@ void spi_ipc_iface_init(struct device *spi_ipc_dev, struct net_if *iface)
 		mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
 	net_if_set_link_addr(iface, mac, sizeof(mac), NET_LINK_ETHERNET);
+	ethernet_init(iface);
 }
 
 
