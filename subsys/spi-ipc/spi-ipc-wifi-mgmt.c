@@ -210,7 +210,8 @@ static void _disconnect_msg_cb(struct net_buf *reply, void *cb_arg)
 int spi_ipc_wifi_mgmt_disconnect(struct device *dev)
 {
 	struct net_if *iface = dev->driver_data;
-	DECLARE_SPI_IPC_BUF(b, SPI_IPC_PROTO_WIFI_MGMT, DISCONNECT,
+	DECLARE_SPI_IPC_BUF(b, SPI_IPC_PROTO_WIFI_MGMT,
+			    DISCONNECT | SPI_IPC_REQUEST,
 			    0, 0, 0, 0);
 	int ret;
 	struct net_buf *buf;
