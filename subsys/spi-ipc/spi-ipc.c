@@ -682,7 +682,7 @@ static int spi_ipc_submit_buf(struct device *dev,
 	union spi_thb header;
 	struct spi_msg *msg;
 
-	if (!expiry) {
+	if (!expiry && reply_cb) {
 		printk("%s: warning, expiry is 0, invalid\n", __func__);
 		return -EINVAL;
 	}
