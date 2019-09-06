@@ -121,8 +121,8 @@ static void spi_ipc_rx_cb(const struct spi_ipc_proto *proto,
 			  struct net_buf *buf, void *proto_data)
 {
 	/* Allocate network packet with no buffer */
-	struct net_pkt *pkt = net_pkt_rx_alloc(0);
 	struct net_if *iface = proto_data;
+	struct net_pkt *pkt = net_pkt_rx_alloc_on_iface(iface, K_NO_WAIT);
 
 	if (!pkt) {
 		printk("%s: cannot allocate net packet\n", __func__);
