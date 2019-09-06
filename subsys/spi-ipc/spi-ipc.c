@@ -281,7 +281,7 @@ static struct spi_msg *_find_matching_request(struct spi_ipc_data *data)
 	struct spi_msg *m = data->curr_rx_spi_msg;
 	struct spi_msg *r;
 
-	K_DEBUG("%s entered, proto/code = 0x%04x, trans = %u\n", __func__,
+	K_DEBUG("%s entered, proto/code = 0x%08x, trans = %u\n", __func__,
 		m->proto_code, m->trans);
 
 	if (m->proto_code & SPI_IPC_REQUEST) {
