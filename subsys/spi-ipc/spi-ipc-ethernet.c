@@ -28,7 +28,7 @@ static int spi_ipc_ether_get_mac(struct device *spi_ipc_dev, u8_t mac[6])
 	size_t len = 6;
 
 	ret = spi_ipc_simple_trans(spi_ipc_dev, &eth_spi_ipc_pool, &b,
-				   mac, &len, 2000);
+				   mac, &len, 4000);
 	if (ret < 0)
 		return ret;
 	if (len != 6) {
