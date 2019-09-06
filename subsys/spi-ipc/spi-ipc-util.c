@@ -28,7 +28,9 @@ static void reply_cb(struct net_buf *reply, void *cb_arg)
 		return;
 	}
 	if (!reply) {
-		printk("%s: NO REPLY: timeout !!\n", __func__);
+		printk("%s: NO REPLY: timeout\n", __func__);
+	} else {
+		net_buf_ref(reply);
 	}
 	stdata->reply = reply;
 	k_sem_give(&stdata->s);
