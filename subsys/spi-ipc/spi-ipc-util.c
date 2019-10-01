@@ -60,9 +60,11 @@ int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 	k_sem_init(&stdata.s, 0, 1);
 	ret = api->submit_buf(spi_ipc_dev, buf,
 			      preply ? reply_cb : NULL, &stdata, timeout);
-	if (ret < 0 || !preply) {
+	if (ret < 0) {
 		goto end0;
 	}
+	if (!preply)
+		return ret;
 	if (k_sem_take(&stdata.s, K_FOREVER)) {
 		printk("%s: timeout\n", __func__);
 		goto end0;
