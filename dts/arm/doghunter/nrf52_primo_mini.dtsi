@@ -82,8 +82,8 @@
 	mosi-pin = <11>;
 	miso-pin = <41>;
 	sck-pin = <40>;
-	def-char = <0xcc>;
-	orc-char = <0x77>;
+	def-char = <0xaa>;
+	orc-char = <0x99>;
 
 	spi_ipc0: esp8266-primo@0 {
 		status = "ok";
