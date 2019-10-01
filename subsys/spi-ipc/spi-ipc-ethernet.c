@@ -95,7 +95,7 @@ int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
 		printk("%s: CANNOT CLONE packet\n", __func__);
 		return -ENOMEM;
 	}
-	hdr_frag = net_pkt_get_frag(cloned_pkt, K_NO_WAIT);
+	hdr_frag = net_buf_alloc_len(&eth_spi_ipc_pool, 32, 0);
 	if (!hdr_frag) {
 		net_pkt_unref(cloned_pkt);
 		return -ENOMEM;
@@ -105,13 +105,23 @@ int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
 	net_pkt_cursor_init(cloned_pkt);
 	{
 		struct net_buf *frag = cloned_pkt->frags;
+		int i = 0;
 		while (frag) {
-			net_pkt_frag_ref(frag);
+			/*
+			 * References first fragment
+			 * Refs should be: pkt -> 1, frag1 -> 2, frag2 -> 1
+			 */
+			if (i++ == 0)
+				net_pkt_frag_ref(frag);
 			frag = frag->frags;
 		}
 	}
 	/* Submit buffer, no reply expected */
 	ret = api->submit_buf(dev, cloned_pkt->buffer, NULL, NULL, 0);
+	/*
+	 * Unreference packet
+	 * references should be pkt -> 0 (freed), frag1 -> 1, frag2 -> 1
+	 */
 	net_pkt_unref(cloned_pkt);
 	return ret;
 }
