@@ -7,6 +7,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #include "spi-ipc-log.h"
+#include "spi-ipc-private.h"
 #include <net/ethernet.h>
 #include <net/wifi_mgmt.h>
 #include <spi-ipc/spi-ipc.h>
@@ -40,7 +41,7 @@ struct spi_ipc_wifi_connect_request_hdr {
 /* Tx buffer pool */
 NET_BUF_POOL_DEFINE(wifi_mgmt_pool, 4,
 		    sizeof(union spi_thb),
-		    sizeof(struct spi_msg *), NULL);
+		    sizeof(struct spi_msg *), spi_ipc_net_buf_destroy);
 
 static void _scan_msg_cb(struct net_buf *reply, void *cb_arg)
 {

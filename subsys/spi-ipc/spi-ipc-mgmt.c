@@ -6,6 +6,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+#include "spi-ipc-private.h"
 #include <kernel.h>
 #include <net/ethernet.h>
 #include <spi-ipc/spi-ipc.h>
@@ -19,7 +20,7 @@ LOG_MODULE_DECLARE(LOG_MODULE_NAME);
 /* Tx buffer pool */
 NET_BUF_POOL_DEFINE(spi_ipc_mgmt_pool, 2,
 		    sizeof(union spi_thb),
-		    sizeof(struct spi_msg *), NULL);
+		    sizeof(struct spi_msg *), spi_ipc_net_buf_destroy);
 
 static void spi_ipc_mgmt_alive(struct k_timer *timer)
 {

@@ -8,6 +8,7 @@
  */
 
 #include "spi-ipc-log.h"
+#include "spi-ipc-private.h"
 
 #include <zephyr.h>
 #include <kernel.h>
@@ -147,11 +148,9 @@ static struct spi_msg __aligned(4) spi_msg_slab_buf[N_SPI_MSGS];
     (NET_ETH_MAX_FRAME_SIZE/sizeof(union spi_thb) + \
      (NET_ETH_MAX_FRAME_SIZE%sizeof(union spi_thb) ? 1 : 0))
 
-static void _net_buf_destroy(struct net_buf *nb);
-
 NET_BUF_POOL_DEFINE(spi_ipc_pool, 2 * N_BUFFERS_PER_ETH_FRAME,
 		    sizeof(union spi_thb),
-		    sizeof(struct spi_msg *), _net_buf_destroy);
+		    sizeof(struct spi_msg *), spi_ipc_net_buf_destroy);
 static struct k_thread spi_ipc_thread;
 
 #ifdef CONFIG_SPI_IPC_MGMT
@@ -228,7 +227,7 @@ static inline void _net_buf_ref(struct net_buf *nb)
 	net_buf_ref(nb);
 }
 
-static void _net_buf_destroy(struct net_buf *nb)
+void spi_ipc_net_buf_destroy(struct net_buf *nb)
 {
 	struct spi_msg *m = NULL;
 
