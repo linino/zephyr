@@ -130,6 +130,7 @@ struct spi_ipc_data {
 	struct spi_msg *curr_tx_spi_msg;
 	struct net_buf *curr_rx_net_buf;
 	struct spi_msg *curr_rx_spi_msg;
+	int setup_needed;
 	const struct spi_ipc_proto *curr_rx_proto;
 	void *curr_rx_proto_data;
 	/* Used in case of rx errors (no memory) */
@@ -344,12 +345,6 @@ static void setup_dev(struct device *dev)
 		data->spi_output_buf.buf =
 		    &data->spi_output[data->output_index];
 		data->output_index = (data->output_index + 1) & 0x1;
-		if (data->curr_tx_net_buf_offset >= _l) {
-			/* Last tx for this message All done */
-			net_buf_unref(data->curr_tx_net_buf);
-			data->curr_tx_net_buf = NULL;
-			data->curr_tx_spi_msg = NULL;
-		}
 		request_master_attention = 1;
 	} else {
 		const char *v = _dummy_v;
@@ -517,7 +512,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 	}
 }
 
-static int check_dev(struct device *dev)
+static void check_dev(struct device *dev)
 {
 	const struct spi_ipc_config_data *cfg = dev->config->config_info;
 	struct spi_ipc_data *data = dev->driver_data;
@@ -527,12 +522,12 @@ static int check_dev(struct device *dev)
 		int dummy;
 		struct spi_msg *request;
 	} to_result;
-	int ret = 0;
 
 	k_sem_take(&data->sem, K_FOREVER);
 	k_poll_signal_check(&data->spi_signal, &spi_done, &result);
 	K_DEBUG("k_poll_signal_check(): spi_done = %u, result = %d\n",
 		spi_done, result);
+	data->setup_needed = 0;
 	if (spi_done) {
 		/* Spi slave transaction done */
 		k_poll_signal_reset(&data->spi_signal);
@@ -542,7 +537,17 @@ static int check_dev(struct device *dev)
 		K_DEBUG("%s %d, input buf = %p\n", __func__, __LINE__,
 			data->spi_input_buf.buf);
 		spi_ipc_handle_input(data, data->spi_input_buf.buf);
-		ret = 1;
+		data->setup_needed = 1;
+		if (data->curr_tx_net_buf) {
+			size_t _l = net_buf_frags_len(data->curr_tx_net_buf);
+
+			if (data->curr_tx_net_buf_offset >= _l) {
+				/* Last tx for this message All done */
+				net_buf_unref(data->curr_tx_net_buf);
+				data->curr_tx_net_buf = NULL;
+				data->curr_tx_spi_msg = NULL;
+			}
+		}
 	}
 	k_poll_signal_check(&data->removal_signal, &do_remove,
 			    &to_result.dummy);
@@ -560,12 +565,12 @@ static int check_dev(struct device *dev)
 			req->reply_cb(NULL, req->cb_arg);
 		remove_outstanding_request(&req);
 	}
-	if (events[cfg->minor + 1].state == K_POLL_STATE_FIFO_DATA_AVAILABLE) {
-		/* Something available in output queue */
+	if (events[cfg->minor + 1].state == K_POLL_STATE_FIFO_DATA_AVAILABLE &&
+	    !data->curr_tx_net_buf) {
+		/* Device was idle and something new is on tx queue */
 		if (!spi_done)
 			spi_release(data->spi_dev, &data->spi_config);
-		/* ANYTHING MORE TO DO HERE ? */
-		ret = 1;
+		data->setup_needed = 1;
 	}
 	if (_check_mgmt_evt(data, &result)) {
 		if (result) {
@@ -575,21 +580,24 @@ static int check_dev(struct device *dev)
 		}
 	}
 	k_sem_give(&data->sem);
-	return ret;
 }
 
 /* SPI IPC thread */
 static void spi_ipc_main(void *arg)
 {
-	int i, stat, ndevs, do_setup = 1;
+	int i, stat, ndevs;
 
 	while (1) {
 		for (i = 0, ndevs = 0; i < ARRAY_SIZE(active_devices); i++) {
 			struct device *d = active_devices[i];
-			
+
 			if (d) {
-				if (do_setup)
+				struct spi_ipc_data *data = d->driver_data;
+
+				if (data->setup_needed) {
 					setup_dev(d);
+					data->setup_needed = 0;
+				}
 				ndevs++;
 			}
 		}
@@ -600,23 +608,16 @@ static void spi_ipc_main(void *arg)
 		}
 
 		K_DEBUG("%s: entering K_POLL\n", __func__);
-		stat = k_poll(events, ARRAY_SIZE(events), K_FOREVER);
+		do {
+			stat = k_poll(events, ARRAY_SIZE(events), K_FOREVER);
+		} while (stat == -EINTR || stat == -EAGAIN);
 		K_DEBUG("%s: k_poll() returned %d\n", __func__, stat);
 
-		if (stat == -EINTR) {
-			/* FIXME: DO SOMETHING HERE ?? */
-			continue;
-		}
-
-		if (stat == -EAGAIN) {
-			/* Request timeout, should never happen */
-			continue;
-		}
 		for (i = 0; i < ARRAY_SIZE(active_devices); i++) {
 			if (active_devices[i]) {
 				K_DEBUG("Invoking check_dev() (%p)\n",
 					active_devices[i]);
-				do_setup = check_dev(active_devices[i]);
+				check_dev(active_devices[i]);
 				K_DEBUG("check_dev() done\n");
 			}
 		}
@@ -657,6 +658,8 @@ static int spi_ipc_drv_open(struct device *dev, const struct spi_ipc_proto *p,
 				  &data->removal_signal);
 		init_mgmt_event(data, cfg->minor);
 	}
+	/* Setup device first time, so we can receive */
+	data->setup_needed = 1;
 	k_sem_give(&data->sem);
 	return 0;
 }
