@@ -57,8 +57,6 @@ static void spi_ipc_mgmt_rx_cb(const struct spi_ipc_proto *proto,
 		err = -EINVAL;
 	} else
 		err = spi_ipc_error(&hdr);
-	printk("%s: ALIVE received, trans# = %d, error = %d\n", __func__,
-	       spi_ipc_transaction(&hdr), err);
 	k_poll_signal_raise(&md->diag_signal, err);
 }
 
