@@ -17,7 +17,7 @@
 LOG_MODULE_DECLARE(LOG_MODULE_NAME);
 
 /* Tx buffer pool */
-NET_BUF_POOL_DEFINE(eth_spi_ipc_pool, 2,
+NET_BUF_POOL_DEFINE(eth_spi_ipc_pool, 64,
 		    sizeof(union spi_thb),
 		    sizeof(struct spi_msg *), spi_ipc_net_buf_destroy);
 
