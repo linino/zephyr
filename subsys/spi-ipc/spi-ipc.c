@@ -429,11 +429,11 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		nb = net_buf_alloc_len(&spi_ipc_pool,
 				       32 + spi_ipc_data_len(in), K_FOREVER);
 		data->curr_rx_net_buf = nb;
-		memset(nb->user_data, 0, sizeof(m));
 		if (!nb) {
 			printk("cannot allocate rx net buffer\n");
 			return;
 		}
+		memset(nb->user_data, 0, sizeof(m));
 		stat = k_mem_slab_alloc(&spi_ipc_msg_slab, (void **)&m,
 					K_FOREVER);
 		if (stat < 0) {
