@@ -44,7 +44,8 @@ int spi_ipc_simple_trans(struct device *spi_ipc_dev,
 {
 	const struct spi_ipc_driver_api *api = spi_ipc_dev->driver_api;
 	struct net_buf *buf =
-		net_buf_alloc_len(pool, sizeof(union spi_thb), 0), *reply;
+		net_buf_alloc_len(pool, sizeof(union spi_thb), K_FOREVER),
+	    *reply;
 	struct net_buf **preply;
 	union spi_thb b;
 	struct spi_ipc_simple_tdata stdata;

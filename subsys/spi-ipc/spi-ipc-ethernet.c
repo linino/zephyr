@@ -91,12 +91,12 @@ int spi_ipc_ether_send(struct device *dev, struct net_pkt *pkt)
 
 	spi_ipc_set_data_len(&thb, len);
 	spi_ipc_set_transaction(&thb, spi_ipc_new_transaction());
-	cloned_pkt = net_pkt_clone(pkt, K_NO_WAIT);
+	cloned_pkt = net_pkt_clone(pkt, K_FOREVER);
 	if (!cloned_pkt) {
 		printk("%s: CANNOT CLONE packet\n", __func__);
 		return -ENOMEM;
 	}
-	hdr_frag = net_buf_alloc_len(&eth_spi_ipc_pool, 32, 0);
+	hdr_frag = net_buf_alloc_len(&eth_spi_ipc_pool, 32, K_FOREVER);
 	if (!hdr_frag) {
 		net_pkt_unref(cloned_pkt);
 		return -ENOMEM;
@@ -133,7 +133,7 @@ static void spi_ipc_rx_cb(const struct spi_ipc_proto *proto,
 {
 	/* Allocate network packet with no buffer */
 	struct net_if *iface = proto_data;
-	struct net_pkt *pkt = net_pkt_rx_alloc_on_iface(iface, K_NO_WAIT);
+	struct net_pkt *pkt = net_pkt_rx_alloc_on_iface(iface, K_FOREVER);
 
 	if (!pkt) {
 		printk("%s: cannot allocate net packet\n", __func__);
