@@ -427,7 +427,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		K_DEBUG("msg started, rx proto = %s\n",
 			data->curr_rx_proto->name);
 		nb = net_buf_alloc_len(&spi_ipc_pool,
-				       32 + spi_ipc_data_len(in), K_FOREVER);
+				       32 + spi_ipc_data_len(in), K_SECONDS(2));
 		data->curr_rx_net_buf = nb;
 		if (!nb) {
 			printk("cannot allocate rx net buffer\n");
@@ -435,7 +435,7 @@ static void spi_ipc_handle_input(struct spi_ipc_data *data, u8_t *buf)
 		}
 		memset(nb->user_data, 0, sizeof(m));
 		stat = k_mem_slab_alloc(&spi_ipc_msg_slab, (void **)&m,
-					K_FOREVER);
+					K_SECONDS(2));
 		if (stat < 0) {
 			printk("cannot allocate rx spi message\n");
 			data->n_discard_subframes = spi_ipc_data_subframes(in);
@@ -690,7 +690,7 @@ static int spi_ipc_submit_buf(struct device *dev,
 		return -EINVAL;
 	}
 
-	stat = k_mem_slab_alloc(&spi_ipc_msg_slab, (void **)&msg, K_FOREVER);
+	stat = k_mem_slab_alloc(&spi_ipc_msg_slab, (void **)&msg, K_SECONDS(2));
 	if (stat < 0) {
 		return stat;
 	}
